@@ -1,0 +1,27 @@
+# Starter list (replace with full S&P 400 tickers later)
+# Use Yahoo Finance ticker format (e.g., BRK-B not BRK.B if needed)
+IWR
+MDY
+AAPL
+MSFT
+AMZN
+GOOGL
+META
+NVDA
+JPM
+XOM
+UNH
+HD
+COST
+AVGO
+LLY
+PEP
+KO
+WMT
+BAC
+ADBE
+CRM
+INTC
+CSCO
+T
+VZ

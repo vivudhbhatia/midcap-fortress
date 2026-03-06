@@ -1,0 +1,12 @@
+name: OpsBot Command
+description: Run a command like /mfp backtest ...
+title: "cmd: "
+body:
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Put exactly one command line starting with /mfp
+      placeholder: "/mfp backtest timeframe=1d start=2011-01-01 end=2026-03-01 max_symbols=60"
+    validations:
+      required: true

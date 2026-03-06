@@ -1,0 +1,88 @@
+name: OpsBot
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run-command:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Extract command line (first /mfp line)
+        id: cmd
+        run: |
+          python - << 'PY'
+          import os, json
+          ev = json.load(open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8"))
+          txt = ""
+          if "comment" in ev and ev["comment"]:
+              txt = ev["comment"]["body"] or ""
+          elif "issue" in ev and ev["issue"]:
+              txt = ev["issue"]["body"] or ""
+
+          cmd_line = ""
+          for line in txt.splitlines():
+              line = line.strip()
+              if line.startswith("/mfp"):
+                  cmd_line = line
+                  break
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("cmd_line<<EOF\n" + cmd_line + "\nEOF\n")
+          PY
+
+      - name: Run command
+        if: ${{ steps.cmd.outputs.cmd_line != '' }}
+        run: |
+          python - << 'PY'
+          from pathlib import Path
+          import os
+          from mfp.ui.github_opsbot import run_command
+          cmd = os.environ["CMD_LINE"]
+          res = run_command(cmd, workspace=Path("."))
+          Path("opsbot_summary.md").write_text(res.summary_md, encoding="utf-8")
+          PY
+        env:
+          CMD_LINE: ${{ steps.cmd.outputs.cmd_line }}
+
+      - name: Upload artifacts
+        if: ${{ steps.cmd.outputs.cmd_line != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mfp-artifacts
+          path: reports/
+
+      - name: Comment results on Issue
+        if: ${{ steps.cmd.outputs.cmd_line != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('opsbot_summary.md', 'utf8');
+            const issue_number = context.payload.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body
+            });
