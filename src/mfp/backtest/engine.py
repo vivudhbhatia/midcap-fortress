@@ -10,6 +10,7 @@ from mfp.indicators import sma, rsi, atr
 from mfp.strategy.midcap_pulse_v1 import params_for_timeframe
 from mfp.backtest.metrics import compute_metrics
 
+
 def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     o = df["Open"].resample(rule).first()
     h = df["High"].resample(rule).max()
@@ -20,6 +21,24 @@ def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     out.columns = ["Open", "High", "Low", "Close", "Volume"]
     return out
 
+
+def _compute_fetch_start(start_ts: pd.Timestamp, timeframe: str, required_bars: int) -> pd.Timestamp:
+    """
+    Pull extra history BEFORE start_ts so indicators are valid at the start of the requested window.
+    We use conservative calendar offsets (weekends/holidays).
+    """
+    if timeframe == "1d":
+        # ~2 calendar days per bar + buffer
+        return start_ts - pd.Timedelta(days=required_bars * 2 + 60)
+    if timeframe == "1wk":
+        # ~7 days per bar + buffer
+        return start_ts - pd.Timedelta(days=required_bars * 7 + 90)
+    if timeframe == "1mo":
+        # month bars: pad by months directly + buffer
+        return start_ts - pd.DateOffset(months=required_bars + 6)
+    return start_ts - pd.Timedelta(days=required_bars * 2 + 60)
+
+
 @dataclass
 class Position:
     symbol: str
@@ -28,6 +47,7 @@ class Position:
     stop_price: float
     entry_dt: pd.Timestamp
     bars_held: int = 0
+
 
 def run_backtest(
     out_dir: Path,
@@ -40,56 +60,87 @@ def run_backtest(
 ) -> dict:
     if universe_name != "sp400":
         universe_name = "sp400"
+
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
+
     tickers = get_universe_sp400()
     if max_symbols:
         tickers = tickers[:max_symbols]
 
-    cache_dir = out_dir.parent.parent / "data" / "cache"
+    params = params_for_timeframe(timeframe)
 
+    # How many bars we need before start to make indicators stable
+    required_bars = max(params.trend_sma, params.atr_len, params.fast_sma, params.rsi_len) + 10
+    fetch_start_ts = _compute_fetch_start(start_ts, timeframe=timeframe, required_bars=required_bars)
+
+    # Add a few days to end to avoid end-date exclusivity issues; we filter back to end_ts later.
+    fetch_end_ts = end_ts + pd.Timedelta(days=5)
+
+    fetch_start = fetch_start_ts.strftime("%Y-%m-%d")
+    fetch_end = fetch_end_ts.strftime("%Y-%m-%d")
+
+    cache_dir = out_dir.parent.parent / "data" / "cache"
     daily = load_prices_yf(
         tickers=tickers,
-        start=start,
-        end=end,
+        start=fetch_start,
+        end=fetch_end,
         cache_dir=cache_dir,
         chunk_size=50,
     )
 
-    # Build timeframe bars
+    # Build timeframe bars from the fetched daily data
     if timeframe == "1d":
         bars = daily
     elif timeframe == "1wk":
         bars = {t: _resample_ohlcv(df, "W-FRI") for t, df in daily.items()}
     elif timeframe == "1mo":
-        bars = {t: _resample_ohlcv(df, "M") for t, df in daily.items()}
+        # Pandas now expects ME for month-end in newer versions
+        bars = {t: _resample_ohlcv(df, "ME") for t, df in daily.items()}
     else:
         raise ValueError("timeframe must be 1d, 1wk, or 1mo")
 
-    params = params_for_timeframe(timeframe)
-
-    # Precompute indicators
-    data = {}
+    # Compute indicators on full padded history, then slice to [start_ts, end_ts]
+    data: dict[str, pd.DataFrame] = {}
     for t, df in bars.items():
         if len(df) < max(params.trend_sma, params.atr_len) + 5:
             continue
+
         d = df.copy()
         d["sma_trend"] = sma(d["Close"], params.trend_sma)
         d["sma_fast"] = sma(d["Close"], params.fast_sma)
         d["rsi2"] = rsi(d["Close"], params.rsi_len)
         d["atr"] = atr(d["High"], d["Low"], d["Close"], params.atr_len)
         d["atr_pct"] = d["atr"] / d["Close"]
+
+        # Slice to requested window AFTER indicators are computed
+        d = d.loc[(d.index >= start_ts) & (d.index <= end_ts)].copy()
+
+        # Need enough bars inside window to trade
+        if len(d) < 5:
+            continue
+
         data[t] = d
 
-    # Union of dates
-    all_dates = sorted(set().union(*[df.index for df in data.values()]))
+    requested = list(tickers)
+    received = sorted(list(daily.keys()))
+    used = sorted(list(data.keys()))
+    skipped = sorted(list(set(requested) - set(used)))
+
+    # Union of dates across used symbols (already within [start_ts, end_ts])
+    all_dates = sorted(set().union(*[df.index for df in data.values()])) if data else []
     if len(all_dates) < 5:
-        raise RuntimeError("Not enough data to run backtest (check tickers/time range).")
+        raise RuntimeError(
+            f"Not enough usable data to run backtest for timeframe={timeframe}. "
+            f"Try larger date range, different tickers, or check data availability."
+        )
 
     initial_cash = 5000.0
     cash = initial_cash
     equity_series = []
     dd_series = []
 
-    # Risk controls (similar to your fortress constraints)
+    # Fortress-ish risk controls (baseline)
     risk_per_trade_pct = 0.25 / 100.0
     max_open_risk_pct = 1.0 / 100.0
     max_positions = 6
@@ -119,9 +170,8 @@ def run_backtest(
         eq = portfolio_equity(dt)
         equity_series.append((dt, eq))
 
-        # compute drawdown
-        eq_vals = [e for _, e in equity_series]
-        peak = max(eq_vals)
+        # drawdown series
+        peak = max(e for _, e in equity_series)
         dd = (eq / peak) - 1.0
         dd_series.append((dt, dd))
 
@@ -133,11 +183,8 @@ def run_backtest(
                 continue
             low = float(df.loc[dt, "Low"])
             if low <= pos.stop_price:
-                # stop filled at stop price
                 fill = pos.stop_price
-                cash_delta = pos.shares * fill
-                cash_delta = float(cash_delta)
-                cash_nonlocal = cash_delta  # for clarity
+                cash += pos.shares * fill
                 trades.append({
                     "symbol": sym,
                     "entry_dt": pos.entry_dt,
@@ -149,17 +196,16 @@ def run_backtest(
                     "pnl": (fill - pos.entry_price) * pos.shares
                 })
                 to_stop.append(sym)
-                # update cash after loop to avoid dict mutation complexity
-                cash += cash_nonlocal
         for sym in to_stop:
             del positions[sym]
 
-        # 2) EXIT SIGNALS (evaluated at close(dt), executed at open(next_dt))
+        # 2) EXIT SIGNALS (close(dt), execute open(next_dt))
         exit_syms = []
         for sym, pos in positions.items():
             df = data[sym]
             if dt not in df.index or next_dt not in df.index:
                 continue
+
             close = float(df.loc[dt, "Close"])
             sma_fast = float(df.loc[dt, "sma_fast"])
             sma_trend = float(df.loc[dt, "sma_trend"])
@@ -186,20 +232,19 @@ def run_backtest(
                 exit_syms.append(sym)
 
         for sym in exit_syms:
-            if sym in positions:
-                del positions[sym]
+            positions.pop(sym, None)
 
-        # 3) ENTRY SIGNALS (evaluated at close(dt), executed at open(next_dt))
+        # 3) ENTRY SIGNALS (close(dt), execute open(next_dt))
         if len(positions) >= max_positions:
             continue
 
-        # build candidates
         candidates = []
         for sym, df in data.items():
             if sym in positions:
                 continue
             if dt not in df.index or next_dt not in df.index:
                 continue
+
             row = df.loc[dt]
             if pd.isna(row["sma_trend"]) or pd.isna(row["sma_fast"]) or pd.isna(row["rsi2"]) or pd.isna(row["atr"]):
                 continue
@@ -214,17 +259,15 @@ def run_backtest(
             buy_signal = trend_ok and pullback and (rsi2v < params.rsi_buy_below)
 
             if buy_signal:
-                # lower RSI is "more oversold" -> higher priority
-                candidates.append((sym, rsi2v))
+                candidates.append((sym, rsi2v))  # more oversold first
 
-        candidates.sort(key=lambda x: x[1])  # most oversold first
+        candidates.sort(key=lambda x: x[1])
 
-        # risk budgets
         eq_now = portfolio_equity(dt)
         risk_per_trade_usd = eq_now * risk_per_trade_pct
         max_open_risk_usd = eq_now * max_open_risk_pct
 
-        for sym, rsi2v in candidates:
+        for sym, _ in candidates:
             if len(positions) >= max_positions:
                 break
             if open_risk_usd() + risk_per_trade_usd > max_open_risk_usd + 1e-9:
@@ -236,12 +279,15 @@ def run_backtest(
             stop = entry - params.stop_atr_mult * atrv
             if stop <= 0 or entry <= 0:
                 continue
+
             per_share_risk = entry - stop
             if per_share_risk <= 0:
                 continue
+
             shares = int(risk_per_trade_usd // per_share_risk)
             if shares <= 0:
                 continue
+
             cost = shares * entry
             if cost > cash:
                 continue
@@ -256,9 +302,9 @@ def run_backtest(
                 bars_held=0
             )
 
-    # final equity point
     last_dt = all_dates[-1]
     equity_series.append((last_dt, portfolio_equity(last_dt)))
+
     eq_df = pd.DataFrame(equity_series, columns=["date", "equity"]).set_index("date")
     dd_df = pd.DataFrame(dd_series, columns=["date", "drawdown"]).set_index("date")
 
@@ -280,5 +326,14 @@ def run_backtest(
             "universe_name": universe_name,
             "strategy_name": strategy_name,
             "max_symbols": max_symbols,
+            "data_provider": "yfinance",
+            "fetch_start": fetch_start,
+            "fetch_end": fetch_end,
+            "symbols_requested_count": len(requested),
+            "symbols_received_count": len(received),
+            "symbols_used_count": len(used),
+            "symbols_used": used[:200],
+            "symbols_skipped_count": len(skipped),
+            "symbols_skipped": skipped[:200],
         },
     }
