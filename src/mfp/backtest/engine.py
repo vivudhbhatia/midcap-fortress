@@ -1,23 +1,24 @@
 from __future__ import annotations
-from pathlib import Path
-from dataclasses import dataclass
-import pandas as pd
-import numpy as np
 
-from mfp.data.yfinance_provider import load_prices_yf
-from mfp.data.universe_sp400 import get_universe_sp400
-from mfp.indicators import sma, rsi, atr
-from mfp.strategy.midcap_pulse_v1 import params_for_timeframe
+from dataclasses import dataclass
+from pathlib import Path
+
+import pandas as pd
+
 from mfp.backtest.metrics import compute_metrics
+from mfp.data.universe_sp400 import get_universe_sp400
+from mfp.data.yfinance_provider import load_prices_yf
+from mfp.indicators import atr, rsi, sma
+from mfp.strategy.midcap_pulse_v1 import params_for_timeframe
 
 
 def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
     o = df["Open"].resample(rule).first()
     h = df["High"].resample(rule).max()
-    l = df["Low"].resample(rule).min()
+    low_ = df["Low"].resample(rule).min()
     c = df["Close"].resample(rule).last()
     v = df["Volume"].resample(rule).sum()
-    out = pd.concat([o, h, l, c, v], axis=1).dropna()
+    out = pd.concat([o, h, low_, c, v], axis=1).dropna()
     out.columns = ["Open", "High", "Low", "Close", "Volume"]
     return out
 
@@ -58,6 +59,9 @@ def run_backtest(
     strategy_name: str,
     max_symbols: int | None = None,
 ) -> dict:
+    # Ensure output directory exists (important for tests and fresh runs)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     if universe_name != "sp400":
         universe_name = "sp400"
 
@@ -81,6 +85,7 @@ def run_backtest(
     fetch_end = fetch_end_ts.strftime("%Y-%m-%d")
 
     cache_dir = out_dir.parent.parent / "data" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
     daily = load_prices_yf(
         tickers=tickers,
         start=fetch_start,
@@ -185,16 +190,18 @@ def run_backtest(
             if low <= pos.stop_price:
                 fill = pos.stop_price
                 cash += pos.shares * fill
-                trades.append({
-                    "symbol": sym,
-                    "entry_dt": pos.entry_dt,
-                    "exit_dt": dt,
-                    "entry_price": pos.entry_price,
-                    "exit_price": fill,
-                    "shares": pos.shares,
-                    "exit_reason": "stop",
-                    "pnl": (fill - pos.entry_price) * pos.shares
-                })
+                trades.append(
+                    {
+                        "symbol": sym,
+                        "entry_dt": pos.entry_dt,
+                        "exit_dt": dt,
+                        "entry_price": pos.entry_price,
+                        "exit_price": fill,
+                        "shares": pos.shares,
+                        "exit_reason": "stop",
+                        "pnl": (fill - pos.entry_price) * pos.shares,
+                    }
+                )
                 to_stop.append(sym)
         for sym in to_stop:
             del positions[sym]
@@ -219,16 +226,18 @@ def run_backtest(
             if time_exit or profit_exit or trend_exit:
                 fill = float(df.loc[next_dt, "Open"])
                 cash += pos.shares * fill
-                trades.append({
-                    "symbol": sym,
-                    "entry_dt": pos.entry_dt,
-                    "exit_dt": next_dt,
-                    "entry_price": pos.entry_price,
-                    "exit_price": fill,
-                    "shares": pos.shares,
-                    "exit_reason": "time" if time_exit else ("profit" if profit_exit else "trend"),
-                    "pnl": (fill - pos.entry_price) * pos.shares
-                })
+                trades.append(
+                    {
+                        "symbol": sym,
+                        "entry_dt": pos.entry_dt,
+                        "exit_dt": next_dt,
+                        "entry_price": pos.entry_price,
+                        "exit_price": fill,
+                        "shares": pos.shares,
+                        "exit_reason": "time" if time_exit else ("profit" if profit_exit else "trend"),
+                        "pnl": (fill - pos.entry_price) * pos.shares,
+                    }
+                )
                 exit_syms.append(sym)
 
         for sym in exit_syms:
@@ -246,7 +255,12 @@ def run_backtest(
                 continue
 
             row = df.loc[dt]
-            if pd.isna(row["sma_trend"]) or pd.isna(row["sma_fast"]) or pd.isna(row["rsi2"]) or pd.isna(row["atr"]):
+            if (
+                pd.isna(row["sma_trend"])
+                or pd.isna(row["sma_fast"])
+                or pd.isna(row["rsi2"])
+                or pd.isna(row["atr"])
+            ):
                 continue
 
             close = float(row["Close"])
@@ -294,12 +308,7 @@ def run_backtest(
 
             cash -= cost
             positions[sym] = Position(
-                symbol=sym,
-                shares=shares,
-                entry_price=entry,
-                stop_price=stop,
-                entry_dt=next_dt,
-                bars_held=0
+                symbol=sym, shares=shares, entry_price=entry, stop_price=stop, entry_dt=next_dt, bars_held=0
             )
 
     last_dt = all_dates[-1]
