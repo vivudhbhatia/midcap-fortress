@@ -1,0 +1,51 @@
+name: Paper Cycle (Alpaca)
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_symbols:
+        description: "Universe size"
+        required: true
+        default: "60"
+      dry_run:
+        description: "true or false"
+        required: true
+        default: "true"
+  schedule:
+    # 02:05 UTC Mon–Fri (after US market close; DST-safe enough for end-of-day logic)
+    - cron: "5 2 * * 1-5"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Paper cycle
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+          MFP_TRADING_ENABLED: ${{ secrets.MFP_TRADING_ENABLED }}
+          MFP_ALPACA_PAPER: "true"
+        run: |
+          MAX="${{ github.event.inputs.max_symbols }}"
+          DRY="${{ github.event.inputs.dry_run }}"
+          if [ -z "$MAX" ]; then MAX="60"; fi
+          if [ -z "$DRY" ]; then DRY="true"; fi
+          mfp ops "/mfp paper-cycle max_symbols=${MAX} dry_run=${DRY}"
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: mfp-reports
+          path: reports
+          if-no-files-found: error
