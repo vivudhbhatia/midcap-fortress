@@ -1,9 +1,12 @@
 from __future__ import annotations
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 
 def _periods_per_year(timeframe: str) -> int:
     return {"1d": 252, "1wk": 52, "1mo": 12}[timeframe]
+
 
 def compute_metrics(equity: pd.Series, timeframe: str, trades: pd.DataFrame) -> dict:
     eq = equity.dropna()
@@ -34,7 +37,10 @@ def compute_metrics(equity: pd.Series, timeframe: str, trades: pd.DataFrame) -> 
     if num_trades > 0:
         wins = (trades["pnl"] > 0).sum()
         win_rate = float(wins / num_trades)
-        profit_factor = float(trades.loc[trades["pnl"] > 0, "pnl"].sum() / abs(trades.loc[trades["pnl"] < 0, "pnl"].sum() or 1e-12))
+        profit_factor = float(
+            trades.loc[trades["pnl"] > 0, "pnl"].sum()
+            / abs(trades.loc[trades["pnl"] < 0, "pnl"].sum() or 1e-12)
+        )
         avg_trade = float(trades["pnl"].mean())
     else:
         win_rate = 0.0

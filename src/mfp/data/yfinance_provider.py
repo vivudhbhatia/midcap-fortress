@@ -1,17 +1,22 @@
 from __future__ import annotations
+
+import hashlib
 from pathlib import Path
+from typing import Dict, List
+
 import pandas as pd
 import yfinance as yf
-import hashlib
-from typing import Dict, List
+
 
 def _cache_key(tickers: list[str], start: str, end: str) -> str:
     s = ",".join(sorted(tickers)) + f"|{start}|{end}"
     return hashlib.sha256(s.encode()).hexdigest()[:16]
 
+
 def _chunks(lst: List[str], n: int):
     for i in range(0, len(lst), n):
-        yield lst[i:i+n]
+        yield lst[i : i + n]
+
 
 def load_prices_yf(
     tickers: list[str],

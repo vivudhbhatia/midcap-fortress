@@ -1,10 +1,12 @@
 from __future__ import annotations
-from pathlib import Path
-from datetime import datetime
+
 import hashlib
 import json
 import platform
 import subprocess
+from datetime import datetime
+from pathlib import Path
+
 
 def _sha256_file(p: Path) -> str:
     h = hashlib.sha256()
@@ -13,11 +15,13 @@ def _sha256_file(p: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
 def _git_commit() -> str:
     try:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     except Exception:
         return "unknown"
+
 
 def write_manifest(out_dir: Path, bundle: dict, config: dict) -> Path:
     paths = [p for p in bundle.get("paths", []) if p.exists()]

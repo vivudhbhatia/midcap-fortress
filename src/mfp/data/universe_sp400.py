@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from importlib.resources import files
+
 
 def get_universe_sp400() -> list[str]:
     p = files("mfp.data").joinpath("sp400_tickers.txt")
