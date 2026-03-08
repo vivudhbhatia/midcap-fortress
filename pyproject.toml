@@ -35,3 +35,10 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.6.0",
 ]
+
+ui = [
+  "streamlit>=1.33.0",
+  "apscheduler>=3.10.4",
+  "tzdata>=2024.1",
+  "pandas-market-calendars>=4.4.0",
+]

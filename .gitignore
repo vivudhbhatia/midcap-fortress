@@ -17,3 +17,5 @@ venv/
 # Data + outputs
 data/cache/
 reports/
+state/
+.streamlit/
