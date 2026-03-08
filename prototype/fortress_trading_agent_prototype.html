@@ -1,0 +1,1937 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Fortress Trading Agent — Interactive HTML Prototype</title>
+<style>
+:root{--bg:#0b1020;--panel:#0f1730;--panel2:#0c1329;--txt:#e9eefc;--mut:#aab6dd;--line:#21305e;--ok:#39d98a;--warn:#ffcc66;--bad:#ff5c7a;--acc:#6ee7ff;--acc2:#a78bfa;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;font-family:var(--sans);background:radial-gradient(1200px 700px at 15% 10%, rgba(110,231,255,.10), transparent 60%),radial-gradient(1000px 600px at 90% 15%, rgba(167,139,250,.10), transparent 55%),var(--bg);color:var(--txt)}
+header{position:sticky;top:0;z-index:10;background:rgba(11,16,32,.82);backdrop-filter:blur(10px);border-bottom:1px solid rgba(110,231,255,.10)}
+.top{max-width:1400px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg, rgba(110,231,255,.9), rgba(167,139,250,.9))}
+h1{margin:0;font-size:14px} .sub{margin-top:2px;font-size:12px;color:var(--mut)}
+.pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pill{display:flex;align-items:center;gap:8px;background:rgba(15,23,48,.85);border:1px solid rgba(110,231,255,.10);border-radius:999px;padding:7px 10px;font-size:12px;color:var(--mut)}
+.pill b{color:var(--txt)}
+.dot{width:8px;height:8px;border-radius:999px;background:#7f8bb8;box-shadow:0 0 0 3px rgba(127,139,184,.18)}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(57,217,138,.18)}
+.dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(255,204,102,.18)}
+.dot.bad{background:var(--bad);box-shadow:0 0 0 3px rgba(255,92,122,.18)}
+.layout{max-width:1400px;margin:0 auto;padding:14px 16px;display:grid;grid-template-columns:280px 1fr;gap:12px}
+nav{position:sticky;top:68px;align-self:start;background:rgba(15,23,48,.78);border:1px solid rgba(110,231,255,.10);border-radius:14px;overflow:hidden}
+.navh{padding:10px 12px;border-bottom:1px solid rgba(110,231,255,.10);color:var(--mut);font-size:12px}
+.navb{width:100%;border:0;background:transparent;color:var(--mut);padding:10px 12px;display:flex;gap:10px;align-items:center;cursor:pointer;text-align:left;border-left:3px solid transparent}
+.navb:hover{background:rgba(110,231,255,.06);color:var(--txt)}
+.navb.active{background:rgba(110,231,255,.10);color:var(--txt);border-left-color:var(--acc)}
+.ico{width:16px;height:16px;border-radius:6px;background:rgba(110,231,255,.14);border:1px solid rgba(110,231,255,.14)}
+main{min-height:calc(100vh - 120px)}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.card{background:rgba(15,23,48,.75);border:1px solid rgba(110,231,255,.10);border-radius:14px;padding:12px}
+.card h2{margin:0 0 10px;font-size:14px}
+.note{font-size:12px;color:var(--mut);line-height:1.45}
+.hr{border-top:1px solid rgba(110,231,255,.10);margin:10px 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.space{justify-content:space-between}
+.btn{border:1px solid rgba(110,231,255,.14);background:rgba(22,34,74,.75);color:var(--txt);padding:8px 10px;border-radius:10px;cursor:pointer;font-size:12px}
+.btn:hover{background:rgba(22,34,74,.95)}
+.btn.primary{background:linear-gradient(135deg, rgba(110,231,255,.20), rgba(167,139,250,.18));border-color:rgba(110,231,255,.22)}
+.btn.danger{border-color:rgba(255,92,122,.25);background:rgba(255,92,122,.08)}
+.btn.ghost{background:transparent;color:var(--mut);border-color:rgba(110,231,255,.12)}
+.badge{font-size:11px;padding:4px 7px;border-radius:999px;border:1px solid rgba(110,231,255,.16);background:rgba(110,231,255,.08)}
+.badge.ok{border-color:rgba(57,217,138,.25);background:rgba(57,217,138,.09)}
+.badge.warn{border-color:rgba(255,204,102,.30);background:rgba(255,204,102,.10)}
+.badge.bad{border-color:rgba(255,92,122,.30);background:rgba(255,92,122,.10)}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(22,34,74,.65);border:1px solid rgba(110,231,255,.10);border-radius:999px;font-size:12px;color:var(--mut)}
+.chip b{color:var(--txt)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:12px;color:var(--mut);margin-top:6px}
+.kv div:nth-child(2n){color:var(--txt);font-family:var(--mono);font-size:11.5px}
+.tablewrap{overflow:auto;border-radius:12px;border:1px solid rgba(110,231,255,.10);background:rgba(12,19,41,.55)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:9px 10px;border-bottom:1px solid rgba(110,231,255,.08);vertical-align:top}
+th{position:sticky;top:0;background:rgba(12,19,41,.88);color:var(--mut);text-align:left;font-weight:650}
+tr:hover td{background:rgba(110,231,255,.04)}
+.mono{font-family:var(--mono);font-size:11.5px}
+.canvas{width:100%;height:240px;display:block;background:rgba(12,19,41,.58);border:1px solid rgba(110,231,255,.10);border-radius:12px}
+input,select,textarea{background:rgba(12,19,41,.75);border:1px solid rgba(110,231,255,.12);border-radius:10px;padding:8px 9px;color:var(--txt);font-size:12px;outline:none}
+.field{display:flex;flex-direction:column;gap:6px;min-width:160px}
+.field label{font-size:11px;color:var(--mut)}
+.hidden{display:none !important}
+.modalback{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+.modal{max-width:1000px;width:100%;background:rgba(15,23,48,.95);border:1px solid rgba(110,231,255,.14);border-radius:16px;overflow:hidden}
+.modalhdr{padding:12px 14px;border-bottom:1px solid rgba(110,231,255,.10);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.modalhdr h3{margin:0;font-size:13px}
+.modalbody{padding:12px 14px}
+.mblock{font-family:var(--mono);font-size:11.5px;background:rgba(6,10,22,.55);border:1px solid rgba(110,231,255,.12);border-radius:12px;padding:10px;max-height:420px;overflow:auto;white-space:pre}
+@media (max-width:980px){.layout{grid-template-columns:1fr}nav{position:relative;top:auto}}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Fortress Trading Agent — Interactive Prototype</h1>
+        <div class="sub">Multi-strategy • Dynamic parameters • Regime switching • Auditable ledger • Governance</div>
+      </div>
+    </div>
+    <div class="pills">
+      <div class="pill"><span class="dot" id="pillDot"></span><b id="pillHealth">Loading…</b></div>
+      <div class="pill">As-of <b id="pillAsOf">—</b></div>
+      <div class="pill">Window <b id="pillWindow">—</b></div>
+      <div class="pill">Goal <b>&gt;15% CAGR</b></div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav>
+    <div class="navh">Console</div>
+    <button class="navb active" data-tab="dash"><span class="ico"></span>Dashboard</button>
+    <button class="navb" data-tab="analytics"><span class="ico"></span>Analytics (Drill-down)</button>
+    <button class="navb" data-tab="runs"><span class="ico"></span>Runs &amp; Ledger</button>
+    <button class="navb" data-tab="strategies"><span class="ico"></span>Strategy Studio</button>
+    <button class="navb" data-tab="switch"><span class="ico"></span>Switchboard</button>
+    <button class="navb" data-tab="gov"><span class="ico"></span>Governance</button>
+    <button class="navb" data-tab="data"><span class="ico"></span>Data &amp; QA</button>
+    <button class="navb" data-tab="about"><span class="ico"></span>About</button>
+  </nav>
+
+  <main>
+    <section id="tab-dash" class="tab">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <div>
+              <h2>Operations</h2>
+              <div class="note">Simulate deterministic trading runs (Compute → Place → Reconcile). Artifacts are saved with hashes for auditability.</div>
+            </div>
+            <div class="row">
+              <button class="btn primary" id="sim1">Simulate +1 day</button>
+              <button class="btn" id="sim5">+5 days</button>
+              <button class="btn" id="sim30">+30 days</button>
+              <button class="btn" id="gap">Run Gap Finder</button>
+              <button class="btn danger" id="reset">Reset</button>
+            </div>
+          </div>
+          <div class="hr"></div>
+          <div class="grid">
+            <div class="card" style="grid-column:span 4;background:rgba(12,19,41,.45)">
+              <h2>Pipeline (last run)</h2>
+              <div id="pipe"></div>
+            </div>
+            <div class="card" style="grid-column:span 4;background:rgba(12,19,41,.45)">
+              <h2>Regime + Weights</h2>
+              <div id="regime"></div>
+            </div>
+            <div class="card" style="grid-column:span 4;background:rgba(12,19,41,.45)">
+              <h2>Snapshot (as-of)</h2>
+              <div id="snap"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 8">
+          <div class="row space">
+            <h2>Equity (window)</h2>
+            <div class="row">
+              <span class="badge" id="goalBadge">Goal</span>
+              <span class="badge" id="ddBadge">DD</span>
+            </div>
+          </div>
+          <canvas id="eq" class="canvas" width="900" height="300"></canvas>
+          <div class="row" style="margin-top:8px">
+            <span class="chip">Hover chart to inspect</span>
+            <span class="chip">Annualized stats assume 252 trading days</span>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 4">
+          <h2>Open Positions (current)</h2>
+          <div class="tablewrap">
+            <table id="posTbl"><thead><tr><th>Ticker</th><th>Qty</th><th>Entry</th><th>UPL</th></tr></thead><tbody></tbody></table>
+          </div>
+          <div class="hr"></div>
+          <h2>Last Orders</h2>
+          <div class="tablewrap">
+            <table id="ordTbl"><thead><tr><th>Side</th><th>Symbol</th><th>Qty</th><th>$Risk</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <h2>Window Summary</h2>
+            <span class="chip">Change As-of and Window in Analytics tab</span>
+          </div>
+          <div id="summary" class="grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-analytics" class="tab hidden">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <div>
+              <h2>Analytics (Point-in-time + Time Windows)</h2>
+              <div class="note">Pick an As-of date and a Window. Metrics, trades, and runs are filtered to that window and drillable.</div>
+            </div>
+            <div class="row">
+              <div class="field"><label>As-of date</label><input type="date" id="asOf"/></div>
+              <div class="field"><label>Window</label>
+                <select id="win">
+                  <option value="5">1W (5d)</option>
+                  <option value="21">1M (21d)</option>
+                  <option value="63">3M (63d)</option>
+                  <option value="126">6M (126d)</option>
+                  <option value="252">1Y (252d)</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+              <div class="row" style="align-self:flex-end">
+                <button class="btn" id="apply">Apply</button>
+                <button class="btn ghost" id="latest">Latest</button>
+              </div>
+            </div>
+          </div>
+          <div class="hr"></div>
+          <div id="ametrics" class="grid"></div>
+        </div>
+
+        <div class="card" style="grid-column:span 7">
+          <div class="row space">
+            <h2>Equity (filtered)</h2>
+            <div class="row">
+              <span class="badge" id="cagrB">CAGR</span>
+              <span class="badge" id="ddB">DD</span>
+            </div>
+          </div>
+          <canvas id="eq2" class="canvas" width="900" height="300"></canvas>
+          <div class="row" style="margin-top:8px">
+            <span class="chip">Click trades below for evidence</span>
+            <span class="chip">Click run rows to open ledger bundle</span>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 5">
+          <h2>Snapshot (as-of)</h2>
+          <div id="asSnap"></div>
+          <div class="hr"></div>
+          <h2>Gap Findings (latest)</h2>
+          <div id="gaps"></div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <h2>Trades (window)</h2>
+            <div class="row">
+              <input id="tSearch" type="text" placeholder="Search ticker/strategy/reason…" style="min-width:260px"/>
+              <select id="tStrat" style="min-width:180px"><option value="all">All strategies</option></select>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table id="tradeTbl">
+              <thead><tr><th>Exit</th><th>Ticker</th><th>Strategy</th><th>$PnL</th><th>PnL%</th><th>Hold</th><th>Exit reason</th><th>Evidence</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <h2>Run Timeline (window)</h2>
+          <div class="tablewrap">
+            <table id="runTbl">
+              <thead><tr><th>Date</th><th>Run ID</th><th>Regime</th><th>Orders</th><th>QA</th><th>Verify</th><th>Integrity</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="tab-runs" class="tab hidden">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <div>
+              <h2>Runs &amp; Audit Ledger</h2>
+              <div class="note">Each run produces artifacts + manifest hashes. Export/import keeps your ledger portable.</div>
+            </div>
+            <div class="row">
+              <button class="btn" id="expState">Export state</button>
+              <label class="btn ghost" style="cursor:pointer">Import<input id="imp" type="file" accept="application/json" style="display:none"/></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 6">
+          <h2>Run list</h2>
+          <div class="tablewrap">
+            <table id="runList"><thead><tr><th>Date</th><th>Run</th><th>Status</th><th>Orders</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 6">
+          <div class="row space">
+            <h2>Selected run</h2>
+            <div class="row">
+              <button class="btn" id="expRun">Export run</button>
+              <button class="btn ghost" id="copyRun">Copy run id</button>
+            </div>
+          </div>
+          <div id="runBox" class="note">Select a run to inspect.</div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <h2>Artifacts</h2>
+            <div class="row">
+              <button class="btn" id="openManifest">manifest.json</button>
+              <button class="btn" id="openSignals">signals.json</button>
+              <button class="btn" id="openOrders">orders_to_place.json</button>
+              <button class="btn" id="openVerify">verification_report.json</button>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="card" style="grid-column:span 5;background:rgba(12,19,41,.45)">
+              <h2>Artifact tree</h2>
+              <div id="tree"></div>
+            </div>
+            <div class="card" style="grid-column:span 7;background:rgba(12,19,41,.45)">
+              <h2>Viewer</h2>
+              <div id="viewer" class="mblock">—</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="tab-strategies" class="tab hidden">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <h2>Strategy Studio</h2>
+          <div class="note">
+            This prototype is built to help pursue long-run &gt;15% CAGR in a risk-reduced, governable way via:
+            (1) multiple complementary edges, (2) regime-first switching, (3) volatility-adaptive risk, (4) circuit-breakers, and (5) strict auditability.
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 7">
+          <div class="row space">
+            <h2>Enabled strategies</h2>
+            <span class="chip">Toggles create governance proposals</span>
+          </div>
+          <div id="strats"></div>
+        </div>
+
+        <div class="card" style="grid-column:span 5">
+          <h2>Critique &amp; improvements</h2>
+          <div class="note" id="crit"></div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <div class="grid">
+            <div class="card" style="grid-column:span 6;background:rgba(12,19,41,.45)">
+              <h2>MFP (improved) rule card</h2>
+              <div id="mfpCard" class="mblock"></div>
+            </div>
+            <div class="card" style="grid-column:span 6;background:rgba(12,19,41,.45)">
+              <h2>Alternatives + switching</h2>
+              <div id="altCard" class="mblock"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-switch" class="tab hidden">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <div>
+              <h2>Switchboard</h2>
+              <div class="note">Edit weights by regime and create a proposal. Weights are used by the risk engine for allocation.</div>
+            </div>
+            <button class="btn" id="propMatrix">Create proposal</button>
+          </div>
+          <div class="hr"></div>
+          <div class="grid">
+            <div class="card" style="grid-column:span 7;background:rgba(12,19,41,.45)">
+              <h2>Regime matrix</h2>
+              <div class="tablewrap">
+                <table id="matrix"><thead><tr><th>Regime</th><th>MFP_STOCKS</th><th>ETF_MR</th><th>TREND</th><th>CASH</th></tr></thead><tbody></tbody></table>
+              </div>
+              <div class="note" style="margin-top:8px">Weights should sum to 1.00. Governance reviews changes.</div>
+            </div>
+            <div class="card" style="grid-column:span 5;background:rgba(12,19,41,.45)">
+              <h2>Dynamic policies</h2>
+              <div id="pol"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-gov" class="tab hidden">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <div>
+              <h2>Governance</h2>
+              <div class="note">Changes go through proposals → approvals → apply. This helps prevent stealth parameter drift and keeps results explainable over years.</div>
+            </div>
+            <button class="btn" id="newProp">New parameter proposal</button>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 7">
+          <div class="row space">
+            <h2>Current configuration (summary)</h2>
+            <span class="chip">Hash = immutable config identity</span>
+          </div>
+          <div id="cfg"></div>
+          <div class="hr"></div>
+          <div id="guard"></div>
+        </div>
+
+        <div class="card" style="grid-column:span 5">
+          <h2>Hard guardrails (demo)</h2>
+          <div class="note">
+            Risk per trade ≤ 0.50% • Max open risk ≤ 2.00% • Max positions ≤ 12 • Earnings buffer ≥ 5 days.
+            In a real system these are enforced server-side.
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <h2>Proposals</h2>
+            <div class="row">
+              <button class="btn" id="approve">Approve</button>
+              <button class="btn" id="applyProp">Apply</button>
+              <button class="btn danger" id="reject">Reject</button>
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table id="propTbl"><thead><tr><th></th><th>Created</th><th>Type</th><th>Status</th><th>Summary</th><th>Diff</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column:span 12">
+          <h2>Changelog</h2>
+          <div class="tablewrap">
+            <table id="logTbl"><thead><tr><th>Applied</th><th>Type</th><th>Summary</th><th>Config hash</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section id="tab-data" class="tab hidden">
+      <div class="grid">
+        <div class="card" style="grid-column:span 12">
+          <div class="row space">
+            <div>
+              <h2>Data &amp; QA (synthetic)</h2>
+              <div class="note">This shows how a real system would block trading when data is incomplete or suspicious.</div>
+            </div>
+            <div class="row">
+              <button class="btn" id="qa">Re-run QA</button>
+              <button class="btn ghost" id="viewUni">View universe JSON</button>
+            </div>
+          </div>
+          <div class="hr"></div>
+          <div class="grid">
+            <div class="card" style="grid-column:span 7;background:rgba(12,19,41,.45)">
+              <h2>Universe snapshot (latest close)</h2>
+              <div class="tablewrap">
+                <table id="uniTbl"><thead><tr><th>Ticker</th><th>Sector</th><th>Price</th><th>Avg $Vol</th><th>ATR%</th><th>Earnings(d)</th><th>Trend</th><th>Eligible</th></tr></thead><tbody></tbody></table>
+              </div>
+            </div>
+            <div class="card" style="grid-column:span 5;background:rgba(12,19,41,.45)">
+              <h2>QA report</h2>
+              <div id="qaBox"></div>
+              <div class="hr"></div>
+              <h2>Verification (latest run)</h2>
+              <div id="vBox"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-about" class="tab hidden">
+      <div class="card">
+        <h2>About</h2>
+        <div class="note">
+          This is a frontend-only demo. It uses synthetic price series to show:
+          (1) time-window summaries &amp; drill-down, (2) full run ledger with hashes, (3) governance of parameter changes, and
+          (4) a multi-strategy switching framework aligned to the goal of &gt;15% CAGR over long horizons with reduced risk.
+          <div class="hr"></div>
+          <b>Not investment advice.</b> Real data, brokerage execution, and production controls require a backend service.
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modalback" id="mb">
+  <div class="modal">
+    <div class="modalhdr">
+      <h3 id="mt">Viewer</h3>
+      <div class="row">
+        <button class="btn" id="mCopy">Copy</button>
+        <button class="btn" id="mDl">Download</button>
+        <button class="btn ghost" id="mClose">Close</button>
+      </div>
+    </div>
+    <div class="modalbody"><div id="mBody" class="mblock">—</div></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ======== Storage & constants ======== */
+const LS = 'fortress_proto_state_v3';
+const APP = '0.3.0';
+const GUARD = { maxRiskPerTradePct:0.50, maxOpenRiskPct:2.00, maxPositions:12, minEarningsBuffer:5 };
+
+const $ = (id)=>document.getElementById(id);
+const qsa = (s)=>Array.from(document.querySelectorAll(s));
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const deep=(o)=>JSON.parse(JSON.stringify(o));
+const fmtUSD=(x)=>'$'+(Math.round((x+Number.EPSILON)*100)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtPct=(x)=>!isFinite(x)?'—':(x*100).toFixed(2)+'%';
+const fmtNum=(x,d=2)=>!isFinite(x)?'—':Number(x).toFixed(d);
+const uuid=()=> 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;const v=c==='x'?r:(r&0x3|0x8);return v.toString(16);});
+
+function save(){ localStorage.setItem(LS, JSON.stringify(state)); }
+function load(){ try{ const raw=localStorage.getItem(LS); return raw?JSON.parse(raw):null; }catch(e){ return null; } }
+
+/* ======== SHA256 (demo, pure JS) ======== */
+function sha256(ascii){
+  function rrot(v,a){ return (v>>>a)|(v<<(32-a)); }
+  const pow=Math.pow, max=pow(2,32);
+  let h=sha256.h=sha256.h||[], k=sha256.k=sha256.k||[], pc=k.length;
+  const isComp={};
+  for(let cand=2; pc<64; cand++){
+    if(!isComp[cand]){
+      for(let i=0;i<313;i+=cand) isComp[i]=cand;
+      h[pc]=(pow(cand,.5)*max)|0;
+      k[pc++]=(pow(cand,1/3)*max)|0;
+    }
+  }
+  ascii += '\x80';
+  while(ascii.length%64-56) ascii+='\x00';
+  const words=[];
+  for(let i=0;i<ascii.length;i++){
+    const j=ascii.charCodeAt(i);
+    words[i>>2] |= j << ((3-i)%4)*8;
+  }
+  const bitLen=(ascii.length-1)*8;
+  words[words.length]=((bitLen/max)|0);
+  words[words.length]=(bitLen);
+  for(let j=0;j<words.length;){
+    const w=words.slice(j,j+=16);
+    const old=h.slice(0);
+    for(let i=0;i<64;i++){
+      const w15=w[i-15], w2=w[i-2];
+      const a=h[0], e=h[4];
+      const t1=h[7]+(rrot(e,6)^rrot(e,11)^rrot(e,25))+((e&h[5])^((~e)&h[6]))+k[i]+(w[i]=(i<16)?w[i]:(w[i-16]+(rrot(w15,7)^rrot(w15,18)^(w15>>>3))+w[i-7]+(rrot(w2,17)^rrot(w2,19)^(w2>>>10)))|0);
+      const t2=(rrot(a,2)^rrot(a,13)^rrot(a,22))+((a&h[1])^(a&h[2])^(h[1]&h[2]));
+      h=[(t1+t2)|0].concat(h); h[4]=(h[4]+t1)|0; h.pop();
+    }
+    for(let i=0;i<8;i++) h[i]=(h[i]+old[i])|0;
+  }
+  let res='';
+  for(let i=0;i<8;i++){
+    for(let j=3;j+1;j--){
+      const b=(h[i]>>(j*8))&255;
+      res += ((b<16)?0:'') + b.toString(16);
+    }
+  }
+  return res;
+}
+const cfgHash=(cfg)=>sha256(JSON.stringify(cfg));
+
+/* ======== Seeded RNG + time helpers ======== */
+function mulberry32(seed){ return ()=>{ let t=seed+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function addDays(d,n){ const dt=new Date(d+'T00:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10); }
+function isWeekend(d){ const dt=new Date(d+'T00:00:00'); const wd=dt.getDay(); return wd===0||wd===6; }
+function nextTD(d){ let x=d; do{x=addDays(x,1);}while(isWeekend(x)); return x; }
+function prevTD(d){ let x=addDays(d,-1); while(isWeekend(x)) x=addDays(x,-1); return x; }
+function tdBetween(a,b){ let d=a,c=0; while(d<b){ d=nextTD(d); c++; if(c>600)break; } return c; }
+
+/* ======== Indicators ======== */
+function sma(vals,p){ const out=new Array(vals.length).fill(null); let s=0; for(let i=0;i<vals.length;i++){ s+=vals[i]; if(i>=p)s-=vals[i-p]; if(i>=p-1)out[i]=s/p; } return out; }
+function rsi(vals,p){ const out=new Array(vals.length).fill(null); if(vals.length<p+1)return out; let g=0,l=0; for(let i=1;i<=p;i++){ const d=vals[i]-vals[i-1]; if(d>=0)g+=d; else l-=d; } g/=p;l/=p; out[p]=l===0?100:100-(100/(1+(g/l))); for(let i=p+1;i<vals.length;i++){ const d=vals[i]-vals[i-1]; const gg=d>0?d:0, ll=d<0?-d:0; g=(g*(p-1)+gg)/p; l=(l*(p-1)+ll)/p; out[i]=l===0?100:100-(100/(1+(g/l))); } return out; }
+function atr(h,l,c,p){ const tr=[]; for(let i=0;i<c.length;i++){ if(i===0)tr.push(h[i]-l[i]); else{ const hl=h[i]-l[i]; const hc=Math.abs(h[i]-c[i-1]); const lc=Math.abs(l[i]-c[i-1]); tr.push(Math.max(hl,hc,lc)); } } const out=new Array(tr.length).fill(null); if(tr.length<p)return out; let sum=0; for(let i=0;i<tr.length;i++){ sum+=tr[i]; if(i>=p)sum-=tr[i-p]; if(i===p-1)out[i]=sum/p; else if(i>=p)out[i]=(out[i-1]*(p-1)+tr[i])/p; } return out; }
+function stdev(a){ if(a.length<2)return NaN; const m=a.reduce((x,y)=>x+y,0)/a.length; const v=a.reduce((x,y)=>x+(y-m)*(y-m),0)/(a.length-1); return Math.sqrt(v); }
+function maxDD(series){ let peak=-Infinity, dd=0; for(const v of series){ if(v>peak)peak=v; dd=Math.max(dd,(peak-v)/peak); } return dd; }
+
+/* ======== Default state ======== */
+function defaultState(){
+  const seed=1337, rng=mulberry32(seed);
+  const tickers=[
+    {t:'MID1',s:'Technology'},{t:'MID2',s:'Healthcare'},{t:'MID3',s:'Industrials'},{t:'MID4',s:'Consumer'},
+    {t:'MID5',s:'Financials'},{t:'MID6',s:'Energy'},{t:'MID7',s:'Materials'},{t:'MID8',s:'Real Estate'},
+    {t:'MID9',s:'Utilities'},{t:'MIDA',s:'Communication'},{t:'MIDB',s:'Technology'},{t:'MIDC',s:'Healthcare'}
+  ];
+  const proxy='IJH';
+  const lastClose='2026-03-06';
+  const bars={};
+  const drift=0.00065, vol=0.012;
+
+  const genSeries=(sym,startPx)=>{
+    const out=[]; let d=addDays(lastClose,-400); while(isWeekend(d)) d=addDays(d,1);
+    let px=startPx;
+    for(let i=0;i<280;i++){
+      if(i>0)d=nextTD(d);
+      const shock=(rng()<0.025)?randn(rng)*0.05:0;
+      const r=drift+randn(rng)*vol+shock;
+      const close=Math.max(2, px*Math.exp(r));
+      const gap=randn(rng)*vol*0.25;
+      const open=Math.max(2, px*Math.exp(gap));
+      const hi=Math.max(open,close)*(1+Math.abs(randn(rng))*0.006);
+      const lo=Math.min(open,close)*(1-Math.abs(randn(rng))*0.006);
+      const v=Math.floor(800000+rng()*900000);
+      out.push({date:d,open,high:hi,low:lo,close,vol:v});
+      px=close;
+    }
+    return out;
+  };
+
+  bars[proxy]=genSeries(proxy,230+rng()*40);
+
+  // correlated stocks
+  const betaBase=0.7;
+  for(const m of tickers){
+    const start=25+rng()*120;
+    const series=[];
+    let px=start;
+    for(let i=0;i<bars[proxy].length;i++){
+      const mr=Math.log(bars[proxy][i].close / (i>0?bars[proxy][i-1].close:bars[proxy][i].close));
+      const id=randn(rng)*vol*0.8;
+      const r=drift*(0.7+rng()*0.6) + (betaBase+rng()*0.6)*mr + id;
+      const close=Math.max(3, px*Math.exp(r));
+      const open=Math.max(3, px*Math.exp((betaBase*mr)+randn(rng)*vol*0.15));
+      const hi=Math.max(open,close)*(1+Math.abs(randn(rng))*0.012);
+      const lo=Math.min(open,close)*(1-Math.abs(randn(rng))*0.012);
+      const vv=Math.floor(300000+rng()*1500000);
+      series.push({date:bars[proxy][i].date,open,high:hi,low:lo,close,vol:vv});
+      px=close;
+    }
+    bars[m.t]=series;
+  }
+
+  const earnings={}; for(const m of tickers){ earnings[m.t]={next:addDays(lastClose,5+Math.floor(rng()*40))}; }
+
+  const config={
+    meta:{app:APP, strategyVersion:'git:demo-commit', createdAt:new Date().toISOString()},
+    objectives:{ targetCagr:0.15, maxRollingDD:0.03, rollingDays:20 },
+    universe:{ proxy, minPrice:10, minAvgDVol:20000000, maxAtrPct:0.08, earningsBuffer:10, sectors:[...new Set(tickers.map(x=>x.s))] },
+    ind:{ smaFast:5, smaTrend:200, rsiP:2, rsiEntryMethod:'fixed', rsiEntryFixed:10, rsiExit:70, atrP:14, atrMult:{low:1.25,med:1.50,high:1.75} },
+    regime:{ trendSma:200, volLookback:20, volLow:0.15, volHigh:0.25, shock2d:0.05, pauseDays:2 },
+    risk:{ startEquity:5000, baseRiskPct:0.25, maxOpenRiskPct:1.00, maxPos:6, sectorCap:2, volTarget:0.18, scaleMin:0.5, scaleMax:1.5, timeExit:7 },
+    strategy:{ enabled:{MFP_STOCKS:true, ETF_MR:true, TREND:true} },
+    switch:{ matrix:{
+      'UP_LOW':{MFP_STOCKS:0.70,ETF_MR:0.20,TREND:0.10,CASH:0.00},
+      'UP_MED':{MFP_STOCKS:0.55,ETF_MR:0.25,TREND:0.10,CASH:0.10},
+      'UP_HIGH':{MFP_STOCKS:0.25,ETF_MR:0.25,TREND:0.20,CASH:0.30},
+      'DOWN_ANY':{MFP_STOCKS:0.00,ETF_MR:0.00,TREND:0.10,CASH:0.90}
+    }}
+  };
+
+  const st={
+    version:APP,
+    seed,
+    clock:{ lastClose, pauseUntil:null },
+    universe:{ tickers, earnings, proxy },
+    data:{ bars },
+    portfolio:{ cash:config.risk.startEquity, positions:[], history:[], trades:[] },
+    runs:[],
+    gaps:[],
+    gov:{ proposals:[], changelog:[], lastConfigHash:cfgHash(config) },
+    config
+  };
+
+  st.portfolio.history.push(snapshot(st,lastClose));
+  return st;
+}
+
+let state = load() || defaultState();
+
+/* ======== Market/regime + helpers ======== */
+const bars=(sym)=>state.data.bars[sym]||[];
+const barByDate=(sym,d)=>{ const b=bars(sym); for(let i=b.length-1;i>=0;i--){ if(b[i].date===d) return b[i]; if(b[i].date<d) break; } return null; };
+const lastBar=(sym)=>{ const b=bars(sym); return b.length?b[b.length-1]:null; };
+
+function snapshot(st,date){
+  const cfg=st.config;
+  let eq=st.portfolio.cash, exp=0, openRisk=0;
+  for(const p of st.portfolio.positions){
+    const b=barByDate(p.sym,date)||lastBar(p.sym);
+    const px=b?b.close:p.entry;
+    eq += p.qty*px;
+    exp += p.qty*px;
+    openRisk += Math.max(0,(p.entry-p.stop)*p.qty);
+  }
+  const win=cfg.objectives.rollingDays;
+  const hist=st.portfolio.history;
+  const sub=hist.slice(Math.max(0,hist.length-win+1)).map(x=>x.eq).concat([eq]);
+  const dd=maxDD(sub);
+  const days=Math.max(1,hist.length);
+  const cagr=Math.pow(eq/cfg.risk.startEquity,252/days)-1;
+  return {date, eq, cash:st.portfolio.cash, exp, openRisk, dd, cagr};
+}
+
+function regime(date){
+  const cfg=state.config;
+  const p=cfg.universe.proxy;
+  const b=bars(p);
+  const idx=b.findIndex(x=>x.date===date);
+  const up=(idx>=0)?b.slice(0,idx+1):b;
+  const closes=up.map(x=>x.close);
+  const s=sma(closes,cfg.regime.trendSma);
+  const trend=(s[s.length-1] && closes[closes.length-1]>s[s.length-1])?'UP':'DOWN';
+  const lb=cfg.regime.volLookback;
+  const rets=[];
+  for(let i=Math.max(1,closes.length-lb);i<closes.length;i++) rets.push(Math.log(closes[i]/closes[i-1]));
+  const v=stdev(rets)*Math.sqrt(252);
+  let vb='MED'; if(isFinite(v)){ if(v<cfg.regime.volLow)vb='LOW'; else if(v>cfg.regime.volHigh)vb='HIGH'; }
+  let shock=false;
+  if(closes.length>=3){
+    const r2=(closes[closes.length-1]/closes[closes.length-3])-1;
+    if(r2<=-cfg.regime.shock2d) shock=true;
+  }
+  const paused = (state.clock.pauseUntil && date<=state.clock.pauseUntil) || shock;
+  const key=(trend==='DOWN')?'DOWN_ANY':`UP_${vb}`;
+  return {date, trend, vol:v, vb, shock, paused, key};
+}
+
+function effParams(r){
+  const cfg=state.config;
+  const v=isFinite(r.vol)?r.vol:cfg.risk.volTarget;
+  const scale=clamp(cfg.risk.volTarget/Math.max(0.0001,v), cfg.risk.scaleMin, cfg.risk.scaleMax);
+  const riskPct=cfg.risk.baseRiskPct*scale;
+  const atrMult = r.vb==='LOW'?cfg.ind.atrMult.low : r.vb==='HIGH'?cfg.ind.atrMult.high : cfg.ind.atrMult.med;
+  return {scale,riskPct,atrMult};
+}
+
+function weights(r){
+  const cfg=state.config;
+  let w=deep(cfg.switch.matrix[r.key]||cfg.switch.matrix.DOWN_ANY);
+  for(const k of ['MFP_STOCKS','ETF_MR','TREND']) if(!cfg.strategy.enabled[k]) w[k]=0;
+  const sum=w.MFP_STOCKS+w.ETF_MR+w.TREND+w.CASH;
+  if(sum<=0) return {MFP_STOCKS:0,ETF_MR:0,TREND:0,CASH:1};
+  for(const k in w) w[k]/=sum;
+  return w;
+}
+
+/* ======== Universe snapshot ======== */
+function universeSnap(date){
+  const cfg=state.config;
+  const out=[];
+  for(const m of state.universe.tickers){
+    const sym=m.t;
+    const b=bars(sym);
+    const idx=b.findIndex(x=>x.date===date);
+    const up=(idx>=0)?b.slice(0,idx+1):b;
+    const closes=up.map(x=>x.close), highs=up.map(x=>x.high), lows=up.map(x=>x.low);
+    const last=up[up.length-1];
+    const sF=sma(closes,cfg.ind.smaFast).at(-1);
+    const sT=sma(closes,cfg.ind.smaTrend).at(-1);
+    const rr=rsi(closes,cfg.ind.rsiP).at(-1);
+    const aa=atr(highs,lows,closes,cfg.ind.atrP).at(-1);
+    const atrPct=(aa&&last.close)?aa/last.close:NaN;
+    const dv=up.slice(-20).map(x=>x.close*x.vol);
+    const avgDVol=dv.length?dv.reduce((a,b)=>a+b,0)/dv.length:NaN;
+    const e=state.universe.earnings[sym]?.next||null;
+    const eDays=e?tdBetween(date,e):null;
+
+    const pass={
+      price:last.close>=cfg.universe.minPrice,
+      dvol:avgDVol>=cfg.universe.minAvgDVol,
+      atr:isFinite(atrPct)?atrPct<=cfg.universe.maxAtrPct:true,
+      sector:cfg.universe.sectors.includes(m.s),
+      earn:eDays===null?true:eDays>=cfg.universe.earningsBuffer,
+      trend:(sT && last.close>sT)
+    };
+    const elig=pass.price&&pass.dvol&&pass.atr&&pass.sector&&pass.earn&&pass.trend;
+
+    out.push({sym, sector:m.s, price:last.close, avgDVol, atrPct, eDays, sF, sT, rsi:rr, atr:aa, elig, pass});
+  }
+  return out;
+}
+
+/* ======== Strategy signals ======== */
+function sigMFP(u){
+  const cfg=state.config;
+  return u.filter(x=>x.elig).filter(x=>(x.price<x.sF) && x.rsi!==null && x.rsi<cfg.ind.rsiEntryFixed)
+    .sort((a,b)=>a.rsi-b.rsi)
+    .map(x=>({strategy:'MFP_STOCKS',sym:x.sym,side:'buy',reason:`Close<SMA${cfg.ind.smaFast} & RSI<${cfg.ind.rsiEntryFixed}`, ev:{close:x.price,sF:x.sF,sT:x.sT,rsi:x.rsi,atr:x.atr,atrPct:x.atrPct,eDays:x.eDays,filters:x.pass}}));
+}
+function sigETF(date){
+  const cfg=state.config, sym=cfg.universe.proxy;
+  const b=bars(sym), idx=b.findIndex(x=>x.date===date);
+  const up=(idx>=0)?b.slice(0,idx+1):b;
+  const closes=up.map(x=>x.close), highs=up.map(x=>x.high), lows=up.map(x=>x.low);
+  const last=up.at(-1);
+  const sF=sma(closes,cfg.ind.smaFast).at(-1);
+  const sT=sma(closes,cfg.ind.smaTrend).at(-1);
+  const rr=rsi(closes,cfg.ind.rsiP).at(-1);
+  const aa=atr(highs,lows,closes,cfg.ind.atrP).at(-1);
+  const elig=(sT && last.close>sT);
+  const buy=elig && last.close<sF && rr!==null && rr<cfg.ind.rsiEntryFixed;
+  return buy?[{strategy:'ETF_MR',sym,side:'buy',reason:`ETF MR: Close<SMA${cfg.ind.smaFast} & RSI<${cfg.ind.rsiEntryFixed}`,ev:{close:last.close,sF,sT,rsi:rr,atr:aa}}]:[];
+}
+function sigTrend(date,u){
+  const cfg=state.config, lb=20;
+  const out=[];
+  for(const x of u){
+    if(!x.pass.price||!x.pass.dvol||!x.pass.sector) continue;
+    const b=bars(x.sym), idx=b.findIndex(z=>z.date===date);
+    const up=(idx>=0)?b.slice(0,idx+1):b;
+    if(up.length<Math.max(cfg.ind.smaTrend,lb)+1) continue;
+    const closes=up.map(z=>z.close), highs=up.map(z=>z.high), lows=up.map(z=>z.low);
+    const sT=sma(closes,cfg.ind.smaTrend).at(-1);
+    const last=up.at(-1);
+    const hh=Math.max(...highs.slice(-lb));
+    const buy=(sT && last.close>sT) && (last.close>=hh*0.999);
+    if(buy){
+      const aa=atr(highs,lows,closes,cfg.ind.atrP).at(-1);
+      out.push({strategy:'TREND',sym:x.sym,side:'buy',reason:`Trend: Close near ${lb}D high & >SMA${cfg.ind.smaTrend}`,ev:{close:last.close,sT,hh,atr:aa}});
+    }
+  }
+  return out;
+}
+
+function exitSignals(date){
+  const cfg=state.config;
+  const out=[];
+  for(const p of state.portfolio.positions){
+    const b=bars(p.sym), idx=b.findIndex(x=>x.date===date);
+    const up=(idx>=0)?b.slice(0,idx+1):b;
+    const closes=up.map(x=>x.close);
+    const last=up.at(-1);
+    const sF=sma(closes,cfg.ind.smaFast).at(-1);
+    const sT=sma(closes,cfg.ind.smaTrend).at(-1);
+    const rr=rsi(closes,cfg.ind.rsiP).at(-1);
+    const hold=tdBetween(p.entryDate,date);
+    const trendBreak=(sT && last.close<sT);
+    const profit=(sF && last.close>sF) || (rr!==null && rr>=cfg.ind.rsiExit);
+    const timeExit=hold>=cfg.risk.timeExit;
+    if(trendBreak||profit||timeExit){
+      out.push({sym:p.sym,qty:p.qty,reason:trendBreak?'Trend stop':profit?'Reversion exit':'Time stop', ev:{close:last.close,sF,sT,rsi:rr,hold}});
+    }
+  }
+  return out;
+}
+
+/* ======== Risk engine + orders ======== */
+function buildIntents(date,r,u){
+  const cfg=state.config;
+  const eff=effParams(r);
+  const w=weights(r);
+  const eq=state.portfolio.history.at(-1).eq;
+  const maxOpen=eq*(cfg.risk.maxOpenRiskPct/100);
+  const openRisk=state.portfolio.positions.reduce((a,p)=>a+Math.max(0,(p.entry-p.stop)*p.qty),0);
+  let openLeft=Math.max(0,maxOpen-openRisk);
+  let slots=Math.max(0,cfg.risk.maxPos-state.portfolio.positions.length);
+  const canEnter=!r.paused;
+
+  const intents=[];
+  for(const ex of exitSignals(date)){
+    intents.push({type:'EXIT',sym:ex.sym,side:'sell',qty:ex.qty,strategy:'SYSTEM_EXIT',reason:ex.reason,ev:ex.ev});
+  }
+
+  let entries=[];
+  if(canEnter){
+    if(cfg.strategy.enabled.MFP_STOCKS) entries=entries.concat(sigMFP(u));
+    if(cfg.strategy.enabled.ETF_MR) entries=entries.concat(sigETF(date));
+    if(cfg.strategy.enabled.TREND) entries=entries.concat(sigTrend(date,u));
+  }
+  const held=new Set(state.portfolio.positions.map(p=>p.sym));
+  entries=entries.filter(e=>!held.has(e.sym));
+
+  // sector cap
+  const sc={};
+  for(const p of state.portfolio.positions){
+    const m=state.universe.tickers.find(x=>x.t===p.sym);
+    if(m) sc[m.s]=(sc[m.s]||0)+1;
+  }
+  const sectorOK=(sym)=>{
+    const m=state.universe.tickers.find(x=>x.t===sym);
+    if(!m) return true;
+    return (sc[m.s]||0)<cfg.risk.sectorCap;
+  };
+
+  // sort by weight then oversold
+  entries.sort((a,b)=>{
+    const wa=w[a.strategy]||0, wb=w[b.strategy]||0;
+    if(wb!==wa) return wb-wa;
+    return (a.ev?.rsi??50)-(b.ev?.rsi??50);
+  });
+
+  const riskBudget=eq*(eff.riskPct/100);
+  for(const e of entries){
+    if(slots<=0 || openLeft<=0) break;
+    if(!sectorOK(e.sym)) continue;
+    const atr=e.ev?.atr, px=e.ev?.close;
+    if(!atr||!px) continue;
+    const stopDist=eff.atrMult*atr;
+    const stop=Math.max(0.5, px-stopDist);
+    const tradeRisk=Math.min(riskBudget, openLeft, maxOpen*(w[e.strategy]||0));
+    let qty=Math.floor(tradeRisk/Math.max(0.01,(px-stop)));
+    if(qty<=0) continue;
+    const cost=qty*px;
+    if(cost>state.portfolio.cash) qty=Math.floor(state.portfolio.cash/px);
+    if(qty<=0) continue;
+
+    const risk$=qty*Math.max(0,(px-stop));
+    intents.push({type:'ENTRY',sym:e.sym,side:'buy',qty,strategy:e.strategy,reason:e.reason,stop, risk$, ev:e.ev});
+    openLeft-=risk$; slots-=1;
+    const m=state.universe.tickers.find(x=>x.t===e.sym); if(m) sc[m.s]=(sc[m.s]||0)+1;
+  }
+
+  return {intents, meta:{eq,maxOpen,openRisk,openLeft,eff,w,canEnter}};
+}
+
+function ordersPayload(run,intents){
+  const orders=[];
+  for(const it of intents){
+    if(it.type==='EXIT'){
+      orders.push({symbol:it.sym,qty:it.qty,side:'sell',type:'market',tif:'opg',client_id:`exit_${run.id}_${it.sym}`,meta:{strategy:it.strategy,reason:it.reason}});
+    }else{
+      orders.push({symbol:it.sym,qty:it.qty,side:'buy',type:'market',tif:'opg',order_class:'bracket',stop:{stop_price:round2(it.stop)},client_id:`entry_${run.id}_${it.sym}`,meta:{strategy:it.strategy,reason:it.reason,risk$:round2(it.risk$)}});
+    }
+  }
+  return orders;
+}
+const round2=(x)=>Math.round(x*100)/100;
+
+/* ======== QA + verify ======== */
+function qaReport(date,u,r){
+  const warns=[], fails=[];
+  for(const x of u){ if(!barByDate(x.sym,date)) fails.push(`Missing bar: ${x.sym} ${date}`); }
+  if(!barByDate(state.config.universe.proxy,date)) fails.push(`Missing proxy bar: ${state.config.universe.proxy} ${date}`);
+  const crazy=u.filter(x=>isFinite(x.atrPct)&&x.atrPct>0.20);
+  if(crazy.length) warns.push('Outlier ATR%: '+crazy.map(x=>x.sym).join(', '));
+  if(r.paused) warns.push('Regime paused (shock filter). Entries should be blocked.');
+  const status=fails.length?'FAIL':warns.length?'WARN':'PASS';
+  return {date,status,warns,fails};
+}
+function verifyRun(run){
+  const cfg=state.config;
+  const find=[];
+  const intents=run.art.orderIntents?.intents||[];
+  const eq=run.art.orderIntents?.meta?.eq||cfg.risk.startEquity;
+  const eff=run.art.orderIntents?.meta?.eff||{riskPct:cfg.risk.baseRiskPct};
+  const budget=eq*(eff.riskPct/100)+1e-9;
+  for(const it of intents.filter(x=>x.type==='ENTRY')){
+    if(it.risk$>budget*1.001) find.push({sev:'WARN',code:'RISK_BUDGET',msg:`${it.sym} risk ${fmtUSD(it.risk$)} > ${fmtUSD(budget)}`});
+  }
+  if(cfg.risk.baseRiskPct>GUARD.maxRiskPerTradePct) find.push({sev:'FAIL',code:'GUARD_RISK',msg:'Risk per trade guardrail violated'});
+  if(cfg.risk.maxOpenRiskPct>GUARD.maxOpenRiskPct) find.push({sev:'FAIL',code:'GUARD_OPEN',msg:'Max open risk guardrail violated'});
+  if(cfg.risk.maxPos>GUARD.maxPositions) find.push({sev:'FAIL',code:'GUARD_POS',msg:'Max positions guardrail violated'});
+  if(cfg.universe.earningsBuffer<GUARD.minEarningsBuffer) find.push({sev:'FAIL',code:'GUARD_EARN',msg:'Earnings buffer guardrail violated'});
+  const status=find.some(x=>x.sev==='FAIL')?'FAIL':find.some(x=>x.sev==='WARN')?'WARN':'PASS';
+  return {status,find};
+}
+function integrity(run){
+  const man=run.art.manifest, mm=[];
+  for(const [k,h] of Object.entries(man.hashes)){
+    const now=sha256(JSON.stringify(run.art[k]));
+    if(now!==h) mm.push({artifact:k,expected:h,got:now});
+  }
+  return {status:mm.length?'FAIL':'PASS',mismatches:mm};
+}
+
+/* ======== Run pipeline ======== */
+function createRun(date){
+  const id=uuid();
+  const r=regime(date);
+  const u=universeSnap(date);
+
+  if(r.shock){
+    let d=date; for(let i=0;i<state.config.regime.pauseDays;i++) d=nextTD(d);
+    state.clock.pauseUntil=d;
+  }
+
+  const qa=qaReport(date,u,r);
+  const oi=buildIntents(date,r,u);
+
+  const run={id,date,createdAt:new Date().toISOString(),status:'COMPUTED',regime:r, art:{}};
+  run.art.qa=qa;
+  run.art.watchlist={date, universe:u.length, eligible:u.filter(x=>x.elig).length, symbols:u.filter(x=>x.elig).map(x=>x.sym)};
+  run.art.signals={date,regime:r,universe:u,entries:oi.intents.filter(x=>x.type==='ENTRY'),exits:oi.intents.filter(x=>x.type==='EXIT'),meta:oi.meta};
+  run.art.orderIntents=oi;
+  run.art.orders={date, id, orders:ordersPayload(run, oi.intents)};
+  run.art.verify=verifyRun(run);
+
+  // hashes
+  const manifest={run_id:id,date,created_at:run.createdAt,app:APP,strategy_version:state.config.meta.strategyVersion,config_hash:cfgHash(state.config),hashes:{}, integrity:{pre:run.art.verify.status, post:null}};
+  for(const k of Object.keys(run.art)){
+    manifest.hashes[k]=sha256(JSON.stringify(run.art[k]));
+  }
+  run.art.manifest=manifest;
+
+  state.runs.push(run);
+  save();
+  return run;
+}
+
+function place(run){
+  if(run.status!=='COMPUTED') return run;
+  const ack=(run.art.orders.orders||[]).map(o=>({client_id:o.client_id, broker_id:'paper_'+Math.random().toString(16).slice(2,10), status:'accepted', at:new Date().toISOString()}));
+  run.art.ack={run_id:run.id, at:new Date().toISOString(), ack};
+  run.status='PLACED';
+  save();
+  return run;
+}
+
+function ensureNextBars(date){
+  const rng=mulberry32(state.seed + state.runs.length*17 + 99);
+  const proxy=state.config.universe.proxy;
+
+  const append=(sym, prev, mret)=>{
+    const baseVol=0.012, drift=0.00055;
+    const idio=randn(rng)*baseVol*0.8;
+    const beta=(sym===proxy)?1.0:(0.7+rng()*0.6);
+    const r=drift + beta*mret + idio;
+    const close=Math.max(2, prev.close*Math.exp(r));
+    const gap=beta*mret*0.35 + randn(rng)*baseVol*0.15;
+    const open=Math.max(2, prev.close*Math.exp(gap));
+    const hi=Math.max(open,close)*(1+Math.abs(randn(rng))*0.010);
+    const lo=Math.min(open,close)*(1-Math.abs(randn(rng))*0.010);
+    const vol=Math.floor(prev.vol*(0.7+rng()*0.8));
+    return {date,open,high:hi,low:lo,close,vol};
+  };
+
+  const pb=bars(proxy);
+  if(pb.some(x=>x.date===date)) return; // already exists
+  const last=pb.at(-1);
+  const shock=(rng()<0.03)?randn(rng)*0.04:0;
+  const mret=(0.00055+randn(rng)*0.012)+shock;
+  pb.push(append(proxy,last,mret));
+  state.data.bars[proxy]=pb;
+  for(const m of state.universe.tickers){
+    const arr=bars(m.t);
+    arr.push(append(m.t, arr.at(-1), mret));
+    state.data.bars[m.t]=arr;
+  }
+}
+
+function sellFill(sym, qty, px, date, reason){
+  const i=state.portfolio.positions.findIndex(p=>p.sym===sym);
+  if(i<0) return;
+  const p=state.portfolio.positions[i];
+  const q=Math.min(qty,p.qty);
+  state.portfolio.cash += q*px;
+  const pnl=(px-p.entry)*q;
+  const pnlPct=(px/p.entry)-1;
+  const hold=tdBetween(p.entryDate,date);
+  state.portfolio.trades.push({id:uuid(), ticker:sym, strategy:p.strategy, entryDate:p.entryDate, entry:p.entry, exitDate:date, exit:px, qty:q, pnl, pnlPct, hold, exitReason:reason});
+  state.portfolio.positions.splice(i,1);
+}
+
+function reconcile(run){
+  if(run.status!=='PLACED' && run.status!=='COMPUTED') return run;
+  const fillDate=nextTD(run.date);
+  ensureNextBars(fillDate);
+
+  const orders=run.art.orders.orders||[];
+  const fills=[];
+  const slip=2/10000;
+
+  // exits first
+  for(const o of orders.filter(x=>x.side==='sell')){
+    const b=barByDate(o.symbol,fillDate); if(!b) continue;
+    const px=b.open*(1-slip);
+    fills.push({sym:o.symbol,side:'sell',qty:o.qty,px,when:'open',client:o.client_id});
+    sellFill(o.symbol,o.qty,px,fillDate,o.meta?.reason||'Exit');
+  }
+
+  // entries
+  for(const o of orders.filter(x=>x.side==='buy')){
+    const b=barByDate(o.symbol,fillDate); if(!b) continue;
+    const px=b.open*(1+slip);
+    fills.push({sym:o.symbol,side:'buy',qty:o.qty,px,when:'open',client:o.client_id});
+    state.portfolio.cash -= o.qty*px;
+    state.portfolio.positions.push({sym:o.symbol,qty:o.qty,entry:px,entryDate:fillDate,stop:o.stop?.stop_price??(px*0.95),strategy:o.meta?.strategy||'UNK',reason:o.meta?.reason||'Entry'});
+  }
+
+  // intraday stop simulation
+  for(let i=state.portfolio.positions.length-1;i>=0;i--){
+    const p=state.portfolio.positions[i];
+    const b=barByDate(p.sym,fillDate); if(!b) continue;
+    if(b.low<=p.stop){
+      const px=(b.open<=p.stop)?b.open:p.stop;
+      sellFill(p.sym,p.qty,px,fillDate,'Stop-loss');
+    }
+  }
+
+  const snap=snapshot(state,fillDate);
+  state.portfolio.history.push(snap);
+  state.clock.lastClose=fillDate;
+
+  run.art.recon={decisionDate:run.date, fillDate, fills, cash:state.portfolio.cash, positions:deep(state.portfolio.positions), snap};
+  run.status='RECONCILED';
+  run.reconciledAt=new Date().toISOString();
+
+  // post integrity
+  run.art.manifest.integrity.post = integrity(run).status;
+
+  save();
+  return run;
+}
+
+function simulate(n){
+  for(let i=0;i<n;i++){
+    const d=state.clock.lastClose;
+    const run=createRun(d);
+    place(run);
+    reconcile(run);
+  }
+  save();
+}
+
+/* ======== Gap Finder (heuristic) ======== */
+function gapFinder(){
+  const cfg=state.config, hist=state.portfolio.history;
+  const findings=[];
+  const win=cfg.objectives.rollingDays;
+  const sub=hist.slice(-win);
+  if(sub.length>=2){
+    const dd=maxDD(sub.map(x=>x.eq));
+    if(dd>cfg.objectives.maxRollingDD*0.80){
+      findings.push({id:uuid(),sev:(dd>cfg.objectives.maxRollingDD)?'P0':'P1',title:'Rolling DD approaching limit',evidence:{dd,limit:cfg.objectives.maxRollingDD,win},suggest:'Reduce risk/trade or raise CASH weight in UP_HIGH.',status:'OPEN',at:new Date().toISOString()});
+    }
+  }
+  if(hist.length>=21){
+    const m=windowMetrics(hist,'all');
+    if(m && isFinite(m.cagr) && m.cagr<cfg.objectives.targetCagr){
+      findings.push({id:uuid(),sev:'P2',title:'CAGR below target (informational)',evidence:{cagr:m.cagr,target:cfg.objectives.targetCagr},suggest:'Review exposure/time-in-market and complement edges.',status:'OPEN',at:new Date().toISOString()});
+    }
+  }
+  // time-stop share
+  const last=state.portfolio.trades.slice(-50);
+  if(last.length>=10){
+    const share=last.filter(t=>t.exitReason==='Time stop').length/last.length;
+    if(share>0.35){
+      findings.push({id:uuid(),sev:'P2',title:'High proportion of time-stops',evidence:{sample:last.length,share},suggest:'Reduce MR in UP_HIGH or adjust stop/entry logic with governance.',status:'OPEN',at:new Date().toISOString()});
+    }
+  }
+  // de-dupe by title vs last 5
+  const recent=new Set(state.gaps.slice(-5).map(g=>g.title));
+  const add=findings.filter(f=>!recent.has(f.title));
+  state.gaps=state.gaps.concat(add);
+  save();
+  return add;
+}
+
+/* ======== Window metrics ======== */
+function windowMetrics(hist, win){
+  if(!hist.length) return null;
+  const end=hist.at(-1);
+  const sub=(win==='all')?hist:hist.slice(Math.max(0,hist.length-Number(win)));
+  if(sub.length<2) return null;
+  const start=sub[0], days=sub.length-1;
+  const total=end.eq/start.eq-1;
+  const cagr=Math.pow(end.eq/start.eq,252/days)-1;
+  const rets=[]; for(let i=1;i<sub.length;i++) rets.push(sub[i].eq/sub[i-1].eq-1);
+  const vol=stdev(rets)*Math.sqrt(252);
+  const sharpe=(vol&&isFinite(vol))?((rets.reduce((a,b)=>a+b,0)/rets.length)*252)/vol:NaN;
+  const dd=maxDD(sub.map(x=>x.eq));
+  return {start,end,days,total,cagr,vol,sharpe,dd};
+}
+
+function tradesInWindow(asOf, win){
+  const end=asOf;
+  let start='0000-00-00';
+  if(win!=='all'){
+    let d=end;
+    for(let i=0;i<Number(win);i++) d=prevTD(d);
+    start=d;
+  }
+  return state.portfolio.trades.filter(t=>t.exitDate<=end && t.exitDate>=start);
+}
+function runsInWindow(asOf, win){
+  const end=asOf;
+  let start='0000-00-00';
+  if(win!=='all'){
+    let d=end;
+    for(let i=0;i<Number(win);i++) d=prevTD(d);
+    start=d;
+  }
+  return state.runs.filter(r=>r.date<=end && r.date>=start);
+}
+
+/* ======== Governance ======== */
+function proposal({type,summary,diff,payload}){
+  const p={id:uuid(),at:new Date().toISOString(),type,status:'DRAFT',summary,diff,payload,approvals:[]};
+  state.gov.proposals.push(p); save(); return p;
+}
+function applyProposal(p){
+  if(p.status!=='APPROVED') return {ok:false,msg:'Must be APPROVED first.'};
+  if(p.type==='PARAM_CHANGE'){
+    setByPath(state.config, p.payload.path, p.payload.to);
+  }else if(p.type==='STRAT_TOGGLE'){
+    state.config.strategy.enabled[p.payload.k]=p.payload.to;
+  }else if(p.type==='MATRIX_CHANGE'){
+    state.config.switch.matrix=deep(p.payload.matrix);
+  }else return {ok:false,msg:'Unknown proposal type.'};
+
+  // guardrails
+  const cfg=state.config;
+  if(cfg.risk.baseRiskPct>GUARD.maxRiskPerTradePct) return {ok:false,msg:'Guardrail: risk/trade too high'};
+  if(cfg.risk.maxOpenRiskPct>GUARD.maxOpenRiskPct) return {ok:false,msg:'Guardrail: max open risk too high'};
+  if(cfg.risk.maxPos>GUARD.maxPositions) return {ok:false,msg:'Guardrail: max positions too high'};
+  if(cfg.universe.earningsBuffer<GUARD.minEarningsBuffer) return {ok:false,msg:'Guardrail: earnings buffer too low'};
+
+  const h=cfgHash(cfg);
+  state.gov.lastConfigHash=h;
+  state.gov.changelog.push({id:uuid(),at:new Date().toISOString(),type:p.type,summary:p.summary,hash:h,propId:p.id});
+  p.status='APPLIED';
+  save();
+  return {ok:true,msg:'Applied.'};
+}
+function setByPath(obj, path, val){
+  const parts=path.split('.');
+  let cur=obj;
+  for(let i=0;i<parts.length-1;i++){ if(!(parts[i] in cur)) cur[parts[i]]={}; cur=cur[parts[i]]; }
+  cur[parts.at(-1)] = val;
+}
+function getByPath(obj, path){
+  const parts=path.split('.');
+  let cur=obj;
+  for(const p of parts){ if(!cur || !(p in cur)) return undefined; cur=cur[p]; }
+  return cur;
+}
+
+/* ======== Modal ======== */
+let mState={title:'',body:'',file:'artifact.json'};
+function openModal(title, body, file){
+  mState={title,body,file:file||'artifact.json'};
+  $('mt').textContent=title;
+  $('mBody').textContent=body;
+  $('mb').style.display='flex';
+}
+function closeModal(){ $('mb').style.display='none'; }
+
+/* ======== Rendering ======== */
+const ui={ asOf: state.clock.lastClose, win:'21', selRun: state.runs.length?state.runs.at(-1).id:null, tSearch:'', tStrat:'all' };
+
+function setTab(name){
+  qsa('.navb').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  qsa('section.tab').forEach(s=>s.classList.toggle('hidden', s.id!=='tab-'+name));
+}
+
+function badge(status){
+  const c = status==='PASS'||status==='OK' ? 'ok' : status==='WARN' ? 'warn' : status==='FAIL' ? 'bad' : '';
+  return `<span class="badge ${c}">${status}</span>`;
+}
+
+function renderHealth(){
+  const last=state.runs.length?state.runs.at(-1):null;
+  const dot=$('pillDot'), label=$('pillHealth');
+  if(!last){ dot.className='dot'; label.textContent='No runs'; return; }
+  const v=last.art.verify?.status||'UNKNOWN';
+  const integ=last.art.manifest?.integrity?.post||'UNKNOWN';
+  let s='OK';
+  if(v==='FAIL'||integ==='FAIL') s='FAIL';
+  else if(v==='WARN') s='WARN';
+  dot.className='dot '+(s==='OK'?'ok':s==='WARN'?'warn':'bad');
+  label.textContent = s==='OK'?'Healthy':s==='WARN'?'Warning':'Blocked';
+}
+
+function renderPipe(){
+  const run=state.runs.length?state.runs.at(-1):null;
+  if(!run){ $('pipe').innerHTML='<div class="note">No runs yet.</div>'; return; }
+  const qa=run.art.qa?.status||'—';
+  const v=run.art.verify?.status||'—';
+  const integ=run.art.manifest?.integrity?.post||run.art.verify?.status||'—';
+  const orders=run.art.orders?.orders?.length||0;
+  $('pipe').innerHTML = `
+    <div class="kv">
+      <div>QA</div><div>${badge(qa)}</div>
+      <div>Signals</div><div class="mono">${(run.art.signals?.entries?.length||0)} entries / ${(run.art.signals?.exits?.length||0)} exits</div>
+      <div>Orders</div><div class="mono">${orders}</div>
+      <div>Verify</div><div>${badge(v)}</div>
+      <div>Integrity</div><div>${badge(integ)}</div>
+      <div>Status</div><div class="mono">${run.status}</div>
+    </div>`;
+}
+
+function renderRegime(){
+  const d=state.clock.lastClose;
+  const r=regime(d);
+  const w=weights(r);
+  const eff=effParams(r);
+  $('regime').innerHTML=`
+    <div class="kv">
+      <div>Key</div><div class="mono">${r.key}</div>
+      <div>Trend</div><div>${r.trend==='UP'?'<span class="badge ok">UP</span>':'<span class="badge bad">DOWN</span>'}</div>
+      <div>Vol</div><div class="mono">${fmtPct(r.vol)}</div>
+      <div>Bucket</div><div class="mono">${r.vb}</div>
+      <div>Paused</div><div>${r.paused?'<span class="badge warn">Yes</span>':'<span class="badge ok">No</span>'}</div>
+      <div>Risk/trade</div><div class="mono">${fmtNum(eff.riskPct,3)}% (scale ${fmtNum(eff.scale,2)}x)</div>
+      <div>ATR mult</div><div class="mono">${fmtNum(eff.atrMult,2)}x</div>
+    </div>
+    <div class="hr"></div>
+    <div class="note"><b>Weights</b>: MFP ${fmtNum(w.MFP_STOCKS,2)} • ETF ${fmtNum(w.ETF_MR,2)} • TREND ${fmtNum(w.TREND,2)} • CASH ${fmtNum(w.CASH,2)}</div>`;
+}
+
+function renderSnap(){
+  const s=asOfSnap(ui.asOf);
+  const cfg=state.config;
+  const ddOk = s.dd <= cfg.objectives.maxRollingDD;
+  const cagrOk = s.cagr >= cfg.objectives.targetCagr;
+  $('snap').innerHTML=`
+    <div class="kv">
+      <div>Date</div><div class="mono">${s.date}</div>
+      <div>Equity</div><div class="mono">${fmtUSD(s.eq)}</div>
+      <div>Cash</div><div class="mono">${fmtUSD(s.cash)}</div>
+      <div>Exposure</div><div class="mono">${fmtUSD(s.exp)}</div>
+      <div>Open risk</div><div class="mono">${fmtUSD(s.openRisk)}</div>
+      <div>Rolling DD</div><div>${ddOk?'<span class="badge ok">'+fmtPct(s.dd)+'</span>':'<span class="badge warn">'+fmtPct(s.dd)+'</span>'}</div>
+      <div>CAGR</div><div>${cagrOk?'<span class="badge ok">'+fmtPct(s.cagr)+'</span>':'<span class="badge warn">'+fmtPct(s.cagr)+'</span>'}</div>
+    </div>`;
+}
+
+function asOfSnap(date){
+  const hist=state.portfolio.history;
+  let best=hist[0];
+  for(const s of hist){ if(s.date<=date) best=s; else break; }
+  return best;
+}
+
+function renderTables(){
+  // positions
+  const tb=$('posTbl').querySelector('tbody');
+  const rows=state.portfolio.positions.map(p=>{
+    const b=barByDate(p.sym, ui.asOf)||lastBar(p.sym);
+    const px=b?b.close:p.entry;
+    const upl=(px-p.entry)*p.qty;
+    return `<tr><td class="mono">${p.sym}</td><td class="mono">${p.qty}</td><td class="mono">${fmtUSD(p.entry)}</td><td class="mono">${(upl>=0?'+':'')+fmtUSD(upl)}</td></tr>`;
+  }).join('');
+  tb.innerHTML=rows||`<tr><td colspan="4" class="note">No positions.</td></tr>`;
+
+  // last orders
+  const run=state.runs.length?state.runs.at(-1):null;
+  const otb=$('ordTbl').querySelector('tbody');
+  const o=(run?.art?.orders?.orders)||[];
+  otb.innerHTML=o.length?o.map(x=>`<tr><td>${x.side.toUpperCase()}</td><td class="mono">${x.symbol}</td><td class="mono">${x.qty}</td><td class="mono">${x.meta?.['risk$']?fmtUSD(x.meta['risk$']):'—'}</td></tr>`).join(''):`<tr><td colspan="4" class="note">No orders.</td></tr>`;
+}
+
+function renderSummary(){
+  const hist=state.portfolio.history.filter(x=>x.date<=ui.asOf);
+  const m=windowMetrics(hist, ui.win);
+  if(!m){ $('summary').innerHTML='<div class="note">Not enough history. Simulate more days.</div>'; return; }
+  const cfg=state.config;
+  const items=[
+    {k:'Start',v:fmtUSD(m.start.eq),s:m.start.date},
+    {k:'End',v:fmtUSD(m.end.eq),s:m.end.date},
+    {k:'Total return',v:fmtPct(m.total),s:`${m.days} trading days`},
+    {k:'CAGR',v:fmtPct(m.cagr),s:`Goal ≥ ${fmtPct(cfg.objectives.targetCagr)}`, good:m.cagr>=cfg.objectives.targetCagr},
+    {k:'Vol (ann.)',v:fmtPct(m.vol),s:'Daily equity returns'},
+    {k:'Sharpe',v:fmtNum(m.sharpe,2),s:'Simple estimate'},
+    {k:'Max DD',v:fmtPct(m.dd),s:`Goal ≤ ${fmtPct(cfg.objectives.maxRollingDD)}`, good:m.dd<=cfg.objectives.maxRollingDD},
+    {k:'Trades',v:String(tradesInWindow(ui.asOf,ui.win).length),s:'Closed in window'},
+  ];
+  $('summary').innerHTML = items.map(it=>`
+    <div class="card" style="grid-column:span 3;background:rgba(12,19,41,.45)">
+      <div class="note">${it.k}</div>
+      <div style="font-size:16px;font-weight:800;margin-top:6px;color:${it.good===undefined?'var(--txt)':it.good?'var(--ok)':'var(--warn)'}">${it.v}</div>
+      <div class="note" style="margin-top:4px">${it.s||''}</div>
+    </div>`).join('');
+}
+
+function draw(canvas, series, format){
+  const ctx=canvas.getContext('2d');
+  const w=canvas.width, h=canvas.height, pad=36;
+  ctx.clearRect(0,0,w,h);
+  if(series.length<2){ ctx.fillStyle='rgba(170,182,221,.9)'; ctx.fillText('Not enough data',pad,20); return; }
+  const ys=series.map(x=>x.y);
+  const yMin=Math.min(...ys), yMax=Math.max(...ys);
+  const yPad=(yMax-yMin)*0.08 || 1;
+  const y0=yMin-yPad, y1=yMax+yPad;
+  const xMax=series.length-1;
+  const X=(i)=>pad + (i/xMax)*(w-pad*1.2);
+  const Y=(v)=>(h-pad) - ((v-y0)/(y1-y0))*(h-pad*1.5);
+  ctx.strokeStyle='rgba(110,231,255,.12)';
+  ctx.beginPath();
+  for(let i=0;i<5;i++){
+    const yy=pad + i*(h-pad*1.5)/4;
+    ctx.moveTo(pad,yy); ctx.lineTo(w-pad*0.6,yy);
+  }
+  ctx.stroke();
+  ctx.strokeStyle='rgba(110,231,255,.85)';
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  series.forEach((p,i)=>{ const x=X(i), y=Y(p.y); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+  ctx.stroke();
+  // labels
+  ctx.fillStyle='rgba(170,182,221,.9)';
+  ctx.font='12px var(--sans)';
+  ctx.fillText(format(yMax), w-pad*2.0, pad);
+  ctx.fillText(format(yMin), w-pad*2.0, h-pad*0.7);
+
+  // hover tooltip
+  canvas.onmousemove = (ev)=>{
+    const rect=canvas.getBoundingClientRect();
+    const mx=(ev.clientX-rect.left)*(canvas.width/rect.width);
+    const i=Math.round((mx-pad)/(w-pad*1.2)*xMax);
+    const idx=clamp(i,0,xMax);
+    const x=X(idx), y=Y(series[idx].y);
+    // redraw base
+    draw(canvas, series, format);
+    ctx.fillStyle='rgba(167,139,250,.95)';
+    ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
+    const label=`${series[idx].label}: ${format(series[idx].y)}`;
+    ctx.fillStyle='rgba(12,19,41,.95)'; ctx.strokeStyle='rgba(110,231,255,.18)';
+    const tw=ctx.measureText(label).width+16;
+    const bx=clamp(x-tw/2,8,w-tw-8);
+    const by=clamp(y-34,8,h-30);
+    ctx.beginPath(); roundRect(ctx,bx,by,tw,24,10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(233,238,252,.95)'; ctx.fillText(label,bx+8,by+16);
+  };
+  canvas.onmouseleave = ()=>{ canvas.onmousemove=null; draw(canvas, series, format); };
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function renderCharts(){
+  // dashboard uses filtered window
+  const hist=state.portfolio.history.filter(x=>x.date<=ui.asOf);
+  const sub=(ui.win==='all')?hist:hist.slice(Math.max(0,hist.length-Number(ui.win)));
+  const series=sub.map(s=>({label:s.date,y:s.eq}));
+  draw($('eq'), series, fmtUSD);
+
+  const cfg=state.config;
+  const all=windowMetrics(state.portfolio.history,'all');
+  if(all){
+    $('goalBadge').className='badge '+(all.cagr>=cfg.objectives.targetCagr?'ok':'warn');
+    $('goalBadge').textContent = all.cagr>=cfg.objectives.targetCagr?'CAGR on track':'CAGR below target';
+  }
+  const dd=state.portfolio.history.at(-1).dd;
+  $('ddBadge').className='badge '+(dd<=cfg.objectives.maxRollingDD?'ok':dd<=cfg.objectives.maxRollingDD*0.8?'warn':'bad');
+  $('ddBadge').textContent='Rolling DD: '+fmtPct(dd);
+}
+
+function renderDash(){
+  renderHealth();
+  $('pillAsOf').textContent=ui.asOf;
+  $('pillWindow').textContent=ui.win==='all'?'All':ui.win+'d';
+  renderPipe();
+  renderRegime();
+  renderSnap();
+  renderTables();
+  renderCharts();
+  renderSummary();
+}
+
+function renderAnalytics(){
+  $('asOf').value=ui.asOf;
+  $('win').value=ui.win;
+
+  const hist=state.portfolio.history.filter(x=>x.date<=ui.asOf);
+  const m=windowMetrics(hist,ui.win);
+  if(m){
+    const cfg=state.config;
+    $('ametrics').innerHTML = [
+      metric('Start',fmtUSD(m.start.eq),m.start.date),
+      metric('End',fmtUSD(m.end.eq),m.end.date),
+      metric('Total return',fmtPct(m.total),m.days+' trading days'),
+      metric('CAGR',fmtPct(m.cagr),'Goal ≥ '+fmtPct(cfg.objectives.targetCagr), m.cagr>=cfg.objectives.targetCagr),
+      metric('Vol (ann.)',fmtPct(m.vol),'Daily equity returns'),
+      metric('Sharpe',fmtNum(m.sharpe,2),'Simple estimate'),
+      metric('Max DD',fmtPct(m.dd),'Goal ≤ '+fmtPct(cfg.objectives.maxRollingDD), m.dd<=cfg.objectives.maxRollingDD),
+      metric('Trades',String(tradesInWindow(ui.asOf,ui.win).length),'Closed trades'),
+    ].join('');
+    $('cagrB').className='badge '+(m.cagr>=cfg.objectives.targetCagr?'ok':'warn');
+    $('cagrB').textContent='CAGR: '+fmtPct(m.cagr);
+    $('ddB').className='badge '+(m.dd<=cfg.objectives.maxRollingDD?'ok':'warn');
+    $('ddB').textContent='MaxDD: '+fmtPct(m.dd);
+
+    const sub=(ui.win==='all')?hist:hist.slice(Math.max(0,hist.length-Number(ui.win)));
+    draw($('eq2'), sub.map(s=>({label:s.date,y:s.eq})), fmtUSD);
+  } else {
+    $('ametrics').innerHTML='<div class="note">Not enough history for this window.</div>';
+  }
+
+  const s=asOfSnap(ui.asOf);
+  $('asSnap').innerHTML = `
+    <div class="kv">
+      <div>Date</div><div class="mono">${s.date}</div>
+      <div>Equity</div><div class="mono">${fmtUSD(s.eq)}</div>
+      <div>Cash</div><div class="mono">${fmtUSD(s.cash)}</div>
+      <div>Exposure</div><div class="mono">${fmtUSD(s.exp)}</div>
+      <div>Open risk</div><div class="mono">${fmtUSD(s.openRisk)}</div>
+      <div>Rolling DD</div><div class="mono">${fmtPct(s.dd)}</div>
+      <div>CAGR</div><div class="mono">${fmtPct(s.cagr)}</div>
+    </div>`;
+
+  const gaps=state.gaps.slice(-5).reverse();
+  $('gaps').innerHTML = gaps.length ? gaps.map(g=>`
+    <div class="card" style="margin-bottom:8px;background:rgba(12,19,41,.45)">
+      <div class="row space"><b>${g.sev} • ${g.title}</b><span class="badge">${g.status}</span></div>
+      <div class="note" style="margin-top:6px">Evidence: ${escapeHtml(JSON.stringify(g.evidence))}</div>
+      <div class="note" style="margin-top:6px">Suggestion: ${escapeHtml(g.suggest)}</div>
+    </div>`).join('') : '<div class="note">No gap findings yet. Run Gap Finder.</div>';
+
+  renderTradeTable();
+  renderRunTable();
+}
+
+function metric(k,v,s,good){
+  const c = good===undefined?'var(--txt)':good?'var(--ok)':'var(--warn)';
+  return `<div class="card" style="grid-column:span 3;background:rgba(12,19,41,.45)"><div class="note">${k}</div><div style="font-size:16px;font-weight:800;margin-top:6px;color:${c}">${v}</div><div class="note" style="margin-top:4px">${s||''}</div></div>`;
+}
+
+function renderTradeTable(){
+  // populate strategy filter once
+  const unique=[...new Set(state.portfolio.trades.map(t=>t.strategy))].sort();
+  const sel=$('tStrat');
+  if(sel.options.length<=1){
+    for(const s of unique){ const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); }
+  }
+  sel.value=ui.tStrat;
+
+  const trades=tradesInWindow(ui.asOf, ui.win);
+  const search=(ui.tSearch||'').toLowerCase();
+  const rows=trades.filter(t=>{
+    const okS=ui.tStrat==='all'?true:t.strategy===ui.tStrat;
+    const hay=(t.ticker+' '+t.strategy+' '+t.exitReason).toLowerCase();
+    return okS && (!search || hay.includes(search));
+  }).sort((a,b)=>b.exitDate.localeCompare(a.exitDate));
+
+  const tb=$('tradeTbl').querySelector('tbody');
+  tb.innerHTML = rows.length ? rows.map(t=>`
+    <tr>
+      <td class="mono">${t.exitDate}</td>
+      <td class="mono">${t.ticker}</td>
+      <td>${t.strategy}</td>
+      <td class="mono">${(t.pnl>=0?'+':'')+fmtUSD(t.pnl)}</td>
+      <td class="mono">${fmtPct(t.pnlPct)}</td>
+      <td class="mono">${t.hold}</td>
+      <td>${t.exitReason}</td>
+      <td><button class="btn" data-trade="${t.id}">View</button></td>
+    </tr>`).join('') : `<tr><td colspan="8" class="note">No trades in window.</td></tr>`;
+
+  tb.querySelectorAll('button[data-trade]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const t=state.portfolio.trades.find(x=>x.id===btn.dataset.trade);
+      const run=state.runs.find(r=>r.date===prevTD(t.exitDate))||null;
+      openModal('trade_evidence.json', JSON.stringify({trade:t, run_guess:run?run.id:null, note:'Real system would link trade→run_id→artifact hashes.'}, null, 2), 'trade_evidence.json');
+    });
+  });
+}
+
+function renderRunTable(){
+  const rows=runsInWindow(ui.asOf,ui.win).sort((a,b)=>b.date.localeCompare(a.date));
+  const tb=$('runTbl').querySelector('tbody');
+  tb.innerHTML = rows.length ? rows.map(r=>{
+    const qa=r.art.qa?.status||'—';
+    const v=r.art.verify?.status||'—';
+    const integ=r.art.manifest?.integrity?.post||'—';
+    const n=r.art.orders?.orders?.length||0;
+    return `<tr data-run="${r.id}">
+      <td class="mono">${r.date}</td>
+      <td class="mono">${r.id.slice(0,8)}…</td>
+      <td class="mono">${r.regime.key}</td>
+      <td class="mono">${n}</td>
+      <td>${badge(qa)}</td>
+      <td>${badge(v)}</td>
+      <td>${badge(integ)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" class="note">No runs in window.</td></tr>`;
+
+  tb.querySelectorAll('tr[data-run]').forEach(tr=>{
+    tr.addEventListener('click', ()=>{
+      ui.selRun=tr.dataset.run;
+      setTab('runs');
+      renderRuns();
+    });
+  });
+}
+
+function renderRuns(){
+  const runs=[...state.runs].sort((a,b)=>b.date.localeCompare(a.date));
+  const tb=$('runList').querySelector('tbody');
+  tb.innerHTML = runs.length ? runs.map(r=>`
+    <tr data-run="${r.id}">
+      <td class="mono">${r.date}</td>
+      <td class="mono">${r.id.slice(0,8)}…</td>
+      <td class="mono">${r.status}</td>
+      <td class="mono">${r.art.orders?.orders?.length||0}</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="note">No runs yet.</td></tr>`;
+
+  tb.querySelectorAll('tr[data-run]').forEach(tr=>{
+    tr.addEventListener('click', ()=>{ ui.selRun=tr.dataset.run; renderRunDetail(); });
+  });
+
+  renderRunDetail();
+}
+
+function renderRunDetail(){
+  const run=state.runs.find(r=>r.id===ui.selRun) || (state.runs.length?state.runs.at(-1):null);
+  if(!run){ $('runBox').textContent='No runs.'; $('tree').innerHTML=''; $('viewer').textContent='—'; return; }
+  ui.selRun=run.id;
+
+  const integ=run.art.manifest?.integrity?.post||'—';
+  $('runBox').innerHTML = `
+    <div class="kv">
+      <div>Run ID</div><div class="mono">${run.id}</div>
+      <div>Date</div><div class="mono">${run.date}</div>
+      <div>Status</div><div class="mono">${run.status}</div>
+      <div>Regime</div><div class="mono">${run.regime.key} (trend ${run.regime.trend}, vol ${fmtPct(run.regime.vol)})</div>
+      <div>QA</div><div>${badge(run.art.qa?.status||'—')}</div>
+      <div>Verify</div><div>${badge(run.art.verify?.status||'—')}</div>
+      <div>Integrity</div><div>${badge(integ)}</div>
+      <div>Config hash</div><div class="mono">${(run.art.manifest?.config_hash||'').slice(0,12)}…</div>
+    </div>`;
+
+  const keys=Object.keys(run.art).sort();
+  $('tree').innerHTML = keys.map(k=>{
+    const h=run.art.manifest?.hashes?.[k]||'—';
+    return `<div class="row space" style="padding:8px 6px;border-bottom:1px solid rgba(110,231,255,.08)">
+      <button class="btn ghost" data-art="${k}">${k}.json</button>
+      <span class="mono" style="color:var(--mut)">${String(h).slice(0,12)}…</span>
+    </div>`;
+  }).join('');
+
+  qsa('button[data-art]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const k=btn.dataset.art;
+      openModal(k+'.json', JSON.stringify(run.art[k], null, 2), k+'.json');
+    });
+  });
+
+  $('viewer').textContent = JSON.stringify(run.art.manifest, null, 2);
+}
+
+function renderStrategies(){
+  const cfg=state.config;
+  const desc={
+    MFP_STOCKS:'Mean reversion pullbacks in midcaps (buy oversold in uptrend).',
+    ETF_MR:'ETF mean reversion on diversified proxy (reduces single-name gap risk).',
+    TREND:'Trend breakout overlay (helps when MR fails).'
+  };
+  $('strats').innerHTML = ['MFP_STOCKS','ETF_MR','TREND'].map(k=>`
+    <div class="card" style="margin-bottom:10px;background:rgba(12,19,41,.45)">
+      <div class="row space">
+        <div>
+          <b>${k}</b>
+          <div class="note">${desc[k]}</div>
+        </div>
+        <div class="row">
+          <span class="badge ${cfg.strategy.enabled[k]?'ok':'warn'}">${cfg.strategy.enabled[k]?'Enabled':'Disabled'}</span>
+          <button class="btn" data-toggle="${k}">${cfg.strategy.enabled[k]?'Disable':'Enable'}</button>
+        </div>
+      </div>
+    </div>`).join('');
+
+  qsa('button[data-toggle]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const k=btn.dataset.toggle;
+      proposal({type:'STRAT_TOGGLE', summary:`Toggle ${k} to ${!state.config.strategy.enabled[k]}`, diff:{path:`strategy.enabled.${k}`,from:state.config.strategy.enabled[k],to:!state.config.strategy.enabled[k]}, payload:{k,to:!state.config.strategy.enabled[k]}});
+      alert('Proposal created. Approve/apply in Governance.');
+      renderGov();
+      setTab('gov');
+    });
+  });
+
+  $('crit').innerHTML = `
+    <ul class="note">
+      <li><b>Gap risk</b>: single-stock overnight gaps can violate tight drawdown targets. Mitigation: ETF mode + CASH in UP_HIGH + earnings buffer.</li>
+      <li><b>Regime mismatch</b>: MR works best in uptrends; avoid downtrends with regime-first switching.</li>
+      <li><b>Execution realism</b>: paper fills too clean; this demo adds basic slippage + stop gap handling.</li>
+      <li><b>Correlation spikes</b>: sector caps help reduce clustered drawdowns.</li>
+      <li><b>Long-run goal</b>: &gt;15% CAGR is pursued via a diversified edge set (MR + trend) and governance (avoid overfitting).</li>
+    </ul>`;
+
+  $('mfpCard').textContent =
+`MFP (Improved) — Rule Card (Demo)
+Universe filters:
+- price >= ${cfg.universe.minPrice}
+- avg $ volume >= ${fmtUSD(cfg.universe.minAvgDVol)}
+- ATR% <= ${(cfg.universe.maxAtrPct*100).toFixed(1)}%
+- earnings >= ${cfg.universe.earningsBuffer} trading days away
+- trend: Close > SMA${cfg.ind.smaTrend}
+
+Regime filter:
+- Proxy ${cfg.universe.proxy} trend vs SMA${cfg.regime.trendSma}
+- Vol bucket from realized vol (${cfg.regime.volLookback}d)
+- Shock pause: 2d proxy drop <= ${(cfg.regime.shock2d*100).toFixed(1)}% pauses entries for ${cfg.regime.pauseDays} trading days
+
+Entry (MFP_STOCKS):
+- Close < SMA${cfg.ind.smaFast}
+- RSI(${cfg.ind.rsiP}) < ${cfg.ind.rsiEntryFixed}
+
+Exit:
+- Close > SMA${cfg.ind.smaFast} OR RSI >= ${cfg.ind.rsiExit}
+- Close < SMA${cfg.ind.smaTrend}
+- Time stop >= ${cfg.risk.timeExit} days
+
+Risk:
+- base risk/trade ${cfg.risk.baseRiskPct}% scaled by vol target ${fmtPct(cfg.risk.volTarget)}
+- max open risk ${cfg.risk.maxOpenRiskPct}%, max positions ${cfg.risk.maxPos}
+- ATR stop multiplier by vol bucket: low ${cfg.ind.atrMult.low}, med ${cfg.ind.atrMult.med}, high ${cfg.ind.atrMult.high}
+
+Auditability:
+- each run writes artifacts + sha256 hashes in manifest.`;
+
+  $('altCard').textContent =
+`Alternatives + Switching (Lower risk path)
+1) ETF_MR:
+- Same mean reversion rules but on diversified proxy ETF -> less single-stock gap risk.
+
+2) TREND:
+- Buy close near 20D high and above SMA${cfg.ind.smaTrend}.
+- Provides an edge when MR fails.
+
+3) Regime-first blend (recommended):
+- UP_LOW/UP_MED: more MR
+- UP_HIGH: add CASH and some TREND
+- DOWN_ANY: mostly CASH (optionally small TREND)
+
+Governance:
+- Switching matrix and parameter edits require proposals + approvals to prevent overfitting.`;
+}
+
+function renderSwitch(){
+  const cfg=state.config;
+  const tb=$('matrix').querySelector('tbody');
+  tb.innerHTML = Object.entries(cfg.switch.matrix).map(([k,v])=>`
+    <tr>
+      <td class="mono">${k}</td>
+      ${['MFP_STOCKS','ETF_MR','TREND','CASH'].map(s=>`<td><input data-m="${k}.${s}" type="number" min="0" max="1" step="0.05" value="${v[s]}" style="width:92px"/></td>`).join('')}
+    </tr>`).join('');
+
+  const r=regime(state.clock.lastClose);
+  const eff=effParams(r);
+  $('pol').innerHTML = `
+    <div class="kv">
+      <div>RSI entry</div><div class="mono">fixed ${cfg.ind.rsiEntryFixed}</div>
+      <div>Vol target</div><div class="mono">${fmtPct(cfg.risk.volTarget)}</div>
+      <div>Effective risk/trade</div><div class="mono">${fmtNum(eff.riskPct,3)}%</div>
+      <div>ATR mult</div><div class="mono">${fmtNum(eff.atrMult,2)}x</div>
+      <div>Shock pause</div><div class="mono">${(cfg.regime.shock2d*100).toFixed(1)}% / ${cfg.regime.pauseDays}d</div>
+    </div>`;
+}
+
+function renderGov(){
+  const cfg=state.config;
+  const hash=cfgHash(cfg);
+  $('cfg').innerHTML = `
+    <div class="kv">
+      <div>Config hash</div><div class="mono">${hash.slice(0,14)}…</div>
+      <div>Strategy version</div><div class="mono">${cfg.meta.strategyVersion}</div>
+      <div>Target CAGR</div><div class="mono">${fmtPct(cfg.objectives.targetCagr)}</div>
+      <div>Rolling DD goal</div><div class="mono">${fmtPct(cfg.objectives.maxRollingDD)} (${cfg.objectives.rollingDays}d)</div>
+      <div>Base risk/trade</div><div class="mono">${cfg.risk.baseRiskPct}%</div>
+      <div>Max open risk</div><div class="mono">${cfg.risk.maxOpenRiskPct}%</div>
+      <div>Max positions</div><div class="mono">${cfg.risk.maxPos}</div>
+      <div>Earnings buffer</div><div class="mono">${cfg.universe.earningsBuffer}d</div>
+      <div>Proxy</div><div class="mono">${cfg.universe.proxy}</div>
+    </div>`;
+
+  const viol=[];
+  if(cfg.risk.baseRiskPct>GUARD.maxRiskPerTradePct) viol.push('Risk per trade too high');
+  if(cfg.risk.maxOpenRiskPct>GUARD.maxOpenRiskPct) viol.push('Max open risk too high');
+  if(cfg.risk.maxPos>GUARD.maxPositions) viol.push('Max positions too high');
+  if(cfg.universe.earningsBuffer<GUARD.minEarningsBuffer) viol.push('Earnings buffer too low');
+  $('guard').innerHTML = viol.length ? `<div class="note"><b style="color:var(--bad)">Violations:</b> ${viol.join(' • ')}</div>` : `<div class="note"><b style="color:var(--ok)">OK:</b> No violations detected.</div>`;
+
+  // proposals
+  const tb=$('propTbl').querySelector('tbody');
+  const props=[...state.gov.proposals].sort((a,b)=>b.at.localeCompare(a.at));
+  tb.innerHTML = props.length ? props.map(p=>`
+    <tr>
+      <td><input type="checkbox" data-p="${p.id}"/></td>
+      <td class="mono">${p.at.slice(0,19).replace('T',' ')}</td>
+      <td>${p.type}</td>
+      <td>${badge(p.status)}</td>
+      <td>${escapeHtml(p.summary)}</td>
+      <td><button class="btn" data-viewp="${p.id}">View</button></td>
+    </tr>`).join('') : `<tr><td colspan="6" class="note">No proposals.</td></tr>`;
+
+  qsa('button[data-viewp]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const p=state.gov.proposals.find(x=>x.id===btn.dataset.viewp);
+      openModal('proposal.json', JSON.stringify(p,null,2), 'proposal.json');
+    });
+  });
+
+  // changelog
+  const lt=$('logTbl').querySelector('tbody');
+  const logs=[...state.gov.changelog].sort((a,b)=>b.at.localeCompare(a.at));
+  lt.innerHTML = logs.length ? logs.map(x=>`
+    <tr>
+      <td class="mono">${x.at.slice(0,19).replace('T',' ')}</td>
+      <td>${x.type}</td>
+      <td>${escapeHtml(x.summary)}</td>
+      <td class="mono">${(x.hash||'').slice(0,12)}…</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="note">No applied changes.</td></tr>`;
+}
+
+function selectedProps(){
+  return qsa('input[type="checkbox"][data-p]').filter(x=>x.checked).map(x=>x.dataset.p);
+}
+
+function renderData(){
+  const d=state.clock.lastClose;
+  const r=regime(d);
+  const u=universeSnap(d);
+  const qa=qaReport(d,u,r);
+  const run=state.runs.length?state.runs.at(-1):null;
+  const v=run?.art?.verify || {status:'—',find:[]};
+
+  const tb=$('uniTbl').querySelector('tbody');
+  tb.innerHTML = u.map(x=>`
+    <tr>
+      <td class="mono">${x.sym}</td>
+      <td>${x.sector}</td>
+      <td class="mono">${fmtUSD(x.price)}</td>
+      <td class="mono">${fmtUSD(x.avgDVol)}</td>
+      <td class="mono">${fmtPct(x.atrPct)}</td>
+      <td class="mono">${x.eDays===null?'—':x.eDays}</td>
+      <td>${x.pass.trend?'<span class="badge ok">UP</span>':'<span class="badge bad">DOWN</span>'}</td>
+      <td>${x.elig?'<span class="badge ok">Yes</span>':'<span class="badge warn">No</span>'}</td>
+    </tr>`).join('');
+
+  $('qaBox').innerHTML = `
+    <div class="kv">
+      <div>Status</div><div>${badge(qa.status)}</div>
+      <div>Warnings</div><div class="mono">${qa.warns.length}</div>
+      <div>Fails</div><div class="mono">${qa.fails.length}</div>
+    </div>
+    <div class="hr"></div>
+    <div class="note"><b>Warnings</b>:<br/>${qa.warns.length?qa.warns.map(x=>'• '+escapeHtml(x)).join('<br/>'):'None'}</div>
+    <div class="hr"></div>
+    <div class="note"><b>Fails</b>:<br/>${qa.fails.length?qa.fails.map(x=>'• '+escapeHtml(x)).join('<br/>'):'None'}</div>`;
+
+  $('vBox').innerHTML = `
+    <div class="kv">
+      <div>Status</div><div>${badge(v.status)}</div>
+      <div>Findings</div><div class="mono">${v.find?.length||0}</div>
+    </div>
+    <div class="hr"></div>
+    <div class="note">${(v.find||[]).slice(0,8).map(f=>'• ['+f.sev+'] '+escapeHtml(f.code)+' — '+escapeHtml(f.msg)).join('<br/>')||'No findings.'}</div>`;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ======== Top-level render ======== */
+function renderAll(){
+  $('pillAsOf').textContent=ui.asOf;
+  $('pillWindow').textContent=ui.win==='all'?'All':ui.win+'d';
+  renderDash();
+  renderAnalytics();
+  renderRuns();
+  renderStrategies();
+  renderSwitch();
+  renderGov();
+  renderData();
+}
+
+/* ======== Events ======== */
+function wire(){
+  // nav
+  qsa('.navb').forEach(b=>b.addEventListener('click', ()=>setTab(b.dataset.tab)));
+
+  // sim
+  $('sim1').addEventListener('click', ()=>{ simulate(1); ui.asOf=state.clock.lastClose; renderAll(); });
+  $('sim5').addEventListener('click', ()=>{ simulate(5); ui.asOf=state.clock.lastClose; renderAll(); });
+  $('sim30').addEventListener('click', ()=>{ simulate(30); ui.asOf=state.clock.lastClose; renderAll(); });
+  $('gap').addEventListener('click', ()=>{ const n=gapFinder().length; alert(n?`Gap Finder added ${n} new finding(s).`:'No new findings.'); renderAll(); });
+  $('reset').addEventListener('click', ()=>{ if(!confirm('Reset demo state?')) return; localStorage.removeItem(LS); state=defaultState(); ui.asOf=state.clock.lastClose; ui.win='21'; ui.selRun=null; save(); renderAll(); });
+
+  // analytics
+  $('apply').addEventListener('click', ()=>{ ui.asOf=$('asOf').value||state.clock.lastClose; ui.win=$('win').value; renderAll(); });
+  $('latest').addEventListener('click', ()=>{ ui.asOf=state.clock.lastClose; $('asOf').value=ui.asOf; renderAll(); });
+  $('tSearch').addEventListener('input', e=>{ ui.tSearch=e.target.value; renderTradeTable(); });
+  $('tStrat').addEventListener('change', e=>{ ui.tStrat=e.target.value; renderTradeTable(); });
+
+  // export/import
+  $('expState').addEventListener('click', ()=>download('fortress_state.json', JSON.stringify(state,null,2)));
+  $('imp').addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const t=await f.text(); try{ const o=JSON.parse(t); if(!o.config||!o.data) throw new Error('invalid'); state=o; ui.asOf=state.clock.lastClose; save(); alert('Imported.'); renderAll(); }catch(err){ alert('Import failed.'); } });
+
+  // run export/copy + quick opens
+  $('expRun').addEventListener('click', ()=>{ const r=selRun(); if(!r) return alert('No run'); download('run_'+r.id+'.json', JSON.stringify(r,null,2)); });
+  $('copyRun').addEventListener('click', ()=>{ if(!ui.selRun) return; navigator.clipboard?.writeText(ui.selRun); alert('Copied.'); });
+  $('openManifest').addEventListener('click', ()=>{ const r=selRun(); if(r) openModal('manifest.json', JSON.stringify(r.art.manifest,null,2),'manifest.json'); });
+  $('openSignals').addEventListener('click', ()=>{ const r=selRun(); if(r) openModal('signals.json', JSON.stringify(r.art.signals,null,2),'signals.json'); });
+  $('openOrders').addEventListener('click', ()=>{ const r=selRun(); if(r) openModal('orders_to_place.json', JSON.stringify(r.art.orders,null,2),'orders_to_place.json'); });
+  $('openVerify').addEventListener('click', ()=>{ const r=selRun(); if(r) openModal('verification_report.json', JSON.stringify(r.art.verify,null,2),'verification_report.json'); });
+
+  // switchboard proposal
+  $('propMatrix').addEventListener('click', ()=>{
+    const matrix=deep(state.config.switch.matrix);
+    qsa('input[data-m]').forEach(inp=>{ const [rk,sk]=inp.dataset.m.split('.'); matrix[rk][sk]=Number(inp.value); });
+    proposal({type:'MATRIX_CHANGE', summary:'Update regime matrix weights', diff:{from:state.config.switch.matrix,to:matrix}, payload:{matrix}});
+    alert('Proposal created. Approve/apply in Governance.');
+    renderGov(); setTab('gov');
+  });
+
+  // governance actions
+  $('newProp').addEventListener('click', ()=>newParamProposal());
+  $('approve').addEventListener('click', ()=>{ const ids=selectedProps(); if(!ids.length)return alert('Select proposal(s).'); for(const id of ids){ const p=state.gov.proposals.find(x=>x.id===id); if(p&&p.status==='DRAFT'){ p.status='APPROVED'; p.approvals.push({by:'user',at:new Date().toISOString()}); } } save(); renderGov(); alert('Approved.'); });
+  $('applyProp').addEventListener('click', ()=>{ const ids=selectedProps(); if(!ids.length)return alert('Select proposal(s).'); const msgs=[]; for(const id of ids){ const p=state.gov.proposals.find(x=>x.id===id); if(!p) continue; const res=applyProposal(p); msgs.push(p.id.slice(0,8)+': '+(res.ok?'OK':'BLOCKED')+' — '+res.msg); } save(); renderAll(); alert(msgs.join('\n')); });
+  $('reject').addEventListener('click', ()=>{ const ids=selectedProps(); if(!ids.length)return alert('Select proposal(s).'); for(const id of ids){ const p=state.gov.proposals.find(x=>x.id===id); if(p && p.status!=='APPLIED') p.status='REJECTED'; } save(); renderGov(); alert('Rejected.'); });
+
+  // data tab
+  $('qa').addEventListener('click', ()=>{ renderData(); alert('QA refreshed.'); });
+  $('viewUni').addEventListener('click', ()=>{ const d=state.clock.lastClose; const u=universeSnap(d); openModal('universe_snapshot.json', JSON.stringify({date:d,universe:u},null,2),'universe_snapshot.json'); });
+
+  // modal
+  $('mClose').addEventListener('click', closeModal);
+  $('mb').addEventListener('click', (e)=>{ if(e.target.id==='mb') closeModal(); });
+  $('mCopy').addEventListener('click', ()=>{ navigator.clipboard?.writeText(mState.body); alert('Copied.'); });
+  $('mDl').addEventListener('click', ()=>download(mState.file, mState.body));
+}
+
+function download(name, text){
+  const blob=new Blob([text],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function newParamProposal(){
+  const path=prompt('Config path to change (e.g., risk.baseRiskPct):','risk.baseRiskPct');
+  if(!path) return;
+  const cur=getByPath(state.config,path);
+  const toStr=prompt('Current: '+JSON.stringify(cur)+'\nNew value (JSON):', JSON.stringify(cur));
+  if(toStr===null) return;
+  let to; try{ to=JSON.parse(toStr);}catch(e){ return alert('Invalid JSON'); }
+  const summary=prompt('Summary/rationale (required):', 'Change '+path+' from '+JSON.stringify(cur)+' to '+JSON.stringify(to));
+  if(!summary) return alert('Summary required');
+  proposal({type:'PARAM_CHANGE', summary, diff:{path,from:cur,to}, payload:{path,to}});
+  save(); renderGov(); setTab('gov'); alert('Proposal created.');
+}
+
+function selRun(){ return state.runs.find(r=>r.id===ui.selRun) || (state.runs.length?state.runs.at(-1):null); }
+
+/* ======== Init ======== */
+wire();
+setTab('dash');
+renderAll();
+
+})();
+</script>
+</body>
+</html>
