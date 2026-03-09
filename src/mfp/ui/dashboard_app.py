@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import copy
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
 from mfp.audit.integrity import verify_manifest
-from mfp.audit.runlog import read_runlog
 from mfp.config.runtime import config_hash, load_config
 from mfp.governance.certificates import load_pretrade_certificate, validate_pretrade_certificate
 from mfp.governance.guardrails import check_guardrails
@@ -25,6 +23,7 @@ from mfp.governance.proposals import (
     read_changelog,
     reject_proposal,
 )
+from mfp.ui.explain_trade import explain_order, load_run_context
 from mfp.ui.github_opsbot import run_command
 
 
@@ -43,11 +42,25 @@ def _short(h: str) -> str:
     return h[:10]
 
 
-def list_run_dirs(workspace: Path, limit: int = 80) -> list[Path]:
+def list_run_dirs(workspace: Path, limit: int = 120) -> list[Path]:
     reports = workspace / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     runs = sorted([p for p in reports.glob("*") if p.is_dir()], key=lambda x: x.name, reverse=True)
     return runs[:limit]
+
+
+def find_latest_run_with(workspace: Path, filename: str) -> Optional[Path]:
+    for r in list_run_dirs(workspace, limit=300):
+        if (r / filename).exists():
+            return r
+    return None
+
+
+def read_json_safe(p: Path) -> Optional[Any]:
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def read_csv_safe(p: Path) -> Optional[pd.DataFrame]:
@@ -57,29 +70,47 @@ def read_csv_safe(p: Path) -> Optional[pd.DataFrame]:
         return None
 
 
+def orders_table(orders: list[dict]) -> pd.DataFrame:
+    rows = []
+    for o in orders:
+        rows.append(
+            {
+                "side": o.get("side"),
+                "symbol": o.get("symbol"),
+                "qty": o.get("qty"),
+                "reason": o.get("reason"),
+                "close": o.get("close"),
+                "rsi": o.get("rsi2"),
+                "stop_est": o.get("stop_estimate"),
+                "risk_usd": o.get("risk_usd"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 st.set_page_config(page_title="Midcap Fortress — Control Center", layout="wide")
 
 workspace = workspace_root()
 cfg_current = load_config(workspace)
 settings_id = config_hash(cfg_current)
 
-# ---------- Sidebar: short glossary ----------
+# --- Simple vs Advanced toggle (defaults to Simple) ---
 with st.sidebar:
-    st.header("Quick glossary (plain English)")
-    st.write("**Safety Check**: a backtest sweep + a human acknowledgement. Required before placing trades.")
-    st.write(
-        "**Settings ID**: a fingerprint of your settings. If it changes, you must re-run the Safety Check."
+    st.header("View mode")
+    advanced = st.toggle(
+        "Advanced mode", value=False, help="Shows raw files, JSON details, and more controls."
     )
-    st.write("**Preview trades**: shows what would be placed (no orders).")
-    st.write("**Activity & Files**: a browseable folder of evidence (JSON/CSV/MD/ZIP).")
+    st.markdown("---")
+    st.write("**Safety Check** = Backtest sweep + human acknowledgement.")
+    st.write("**Settings ID** = fingerprint of your settings. If it changes, re-run Safety Check.")
 
 st.title("Midcap Fortress — Control Center")
-st.caption("Designed for transparency: every run writes files you can inspect, hash, and archive.")
+st.caption("Built for transparency. Every action creates files you can open, review, and verify.")
 
 tabs = st.tabs(
     [
-        "Start Here",
-        "Test Strategy",
+        "Daily Flow (1 screen)",
+        "Backtests",
         "Practice Trading",
         "Activity & Files",
         "Change Settings (with approvals)",
@@ -87,33 +118,40 @@ tabs = st.tabs(
     ]
 )
 
-# ---------------- Start Here ----------------
+# ======================================================================================
+# 1) Daily flow (one screen)
+# ======================================================================================
 with tabs[0]:
-    st.subheader("Today’s checklist")
+    st.subheader("Daily flow")
+    st.caption("Recommended: Safety Check → Preview trades → Place paper orders → Review results")
 
-    colA, colB, colC = st.columns([1.1, 1.2, 1.7])
+    # Live gate status
+    val = validate_pretrade_certificate(workspace, cfg_current)
+    cert = load_pretrade_certificate(workspace)
 
-    with colA:
-        st.markdown("### 1) Account snapshot")
-        if st.button("Get account snapshot now"):
-            res = run_command("/mfp paper-status", workspace=workspace)
+    # Step 1: Safety Check
+    st.markdown("## Step 1 — Run Safety Check (backtest sweep)")
+    col1, col2 = st.columns([1.2, 1.8])
+    with col1:
+        if st.button("Run Safety Check now"):
+            start = cfg_current.get("pretrade_check", {}).get("start", "2011-01-01")
+            end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            max_symbols = int(cfg_current.get("pretrade_check", {}).get("max_symbols", 60))
+            res = run_command(
+                f"/mfp backtest-sweep start={start} end={end} max_symbols={max_symbols}", workspace=workspace
+            )
             st.markdown(res.summary_md)
-            if res.artifacts_dir and st.button("Open snapshot files"):
-                open_folder(res.artifacts_dir)
-
-    with colB:
-        st.markdown("### 2) Safety Check (required)")
-        val = validate_pretrade_certificate(workspace, cfg_current)
-        cert = load_pretrade_certificate(workspace)
-
+            if res.artifacts_dir:
+                st.session_state["last_safety_dir"] = str(res.artifacts_dir)
+                st.button("Open Safety Check files", on_click=open_folder, args=(res.artifacts_dir,))
+            st.rerun()
+    with col2:
         if val["ok"]:
-            st.success("Safety Check: PASS ✅")
+            st.success("Safety Check status: READY ✅")
         else:
-            st.warning("Safety Check: NOT READY ⚠️")
-        st.caption(f"Reason: {val['reason']}")
-
-        st.write(f"Settings ID: `{_short(settings_id)}`")
-
+            st.warning("Safety Check status: NOT READY ⚠️")
+        st.write("Reason:", val["reason"])
+        st.write("Current Settings ID:", f"`{_short(settings_id)}`")
         if cert:
             st.caption("Latest Safety Check record:")
             st.json(
@@ -123,38 +161,130 @@ with tabs[0]:
                 }
             )
 
-        if st.button("I reviewed the Safety Check results (acknowledge)"):
-            res = run_command("/mfp pretrade-ack", workspace=workspace)
-            st.markdown(res.summary_md)
-            st.rerun()
+    # Step 2: Acknowledge
+    st.markdown("## Step 2 — Confirm you reviewed the Safety Check results")
+    if st.button("I reviewed the Safety Check results (acknowledge)"):
+        res = run_command("/mfp pretrade-ack", workspace=workspace)
+        st.markdown(res.summary_md)
+        st.rerun()
 
-    with colC:
-        st.markdown("### 3) Next actions")
-        st.info("Recommended flow: **Run Safety Check → Preview trades → Place trades (paper)**")
+    st.markdown("---")
 
-        if st.button("Run Safety Check now (backtest sweep)"):
-            start = cfg_current.get("pretrade_check", {}).get("start", "2011-01-01")
-            end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            max_symbols = int(cfg_current.get("pretrade_check", {}).get("max_symbols", 60))
-            res = run_command(
-                f"/mfp backtest-sweep start={start} end={end} max_symbols={max_symbols}", workspace=workspace
+    # Step 3: Preview trades
+    st.markdown("## Step 3 — Preview trades (no orders)")
+    if st.button("Preview trades now"):
+        ms = int(cfg_current.get("universe", {}).get("max_symbols", 60))
+        res = run_command(f"/mfp paper-cycle max_symbols={ms} dry_run=true", workspace=workspace)
+        st.markdown(res.summary_md)
+        if res.artifacts_dir:
+            st.session_state["last_preview_dir"] = str(res.artifacts_dir)
+            st.button("Open preview files", on_click=open_folder, args=(res.artifacts_dir,))
+        st.rerun()
+
+    # Show preview results (latest or last session)
+    preview_dir = None
+    if "last_preview_dir" in st.session_state:
+        p = Path(st.session_state["last_preview_dir"])
+        if p.exists():
+            preview_dir = p
+    if preview_dir is None:
+        preview_dir = find_latest_run_with(workspace, "orderIntents.json")
+
+    if preview_dir:
+        st.markdown(f"### Latest preview: `{preview_dir.name}`")
+        intents = read_json_safe(preview_dir / "orderIntents.json") or []
+        if intents:
+            df = orders_table(intents)
+            st.dataframe(df, use_container_width=True)
+
+            st.markdown("### Why was this trade suggested?")
+            choice = st.selectbox(
+                "Choose a trade to explain",
+                [
+                    f"{o.get('side', '?').upper()} {o.get('symbol')} qty={o.get('qty')} ({o.get('reason', '')})"
+                    for o in intents
+                ],
             )
-            st.markdown(res.summary_md)
-            if res.artifacts_dir:
-                st.button("Open Safety Check files", on_click=open_folder, args=(res.artifacts_dir,))
+            idx = [
+                f"{o.get('side', '?').upper()} {o.get('symbol')} qty={o.get('qty')} ({o.get('reason', '')})"
+                for o in intents
+            ].index(choice)
+            order = intents[idx]
 
-        st.markdown("---")
-        st.markdown("#### Recent activity")
-        items = read_runlog(workspace, limit=30)
-        if items:
-            st.dataframe(pd.DataFrame(items))
+            ctx = load_run_context(preview_dir, workspace)
+            exp = explain_order(order, ctx)
+
+            st.info(exp["summary"])
+            st.markdown("**Signal checks (why it triggered):**")
+            for k, v in exp["signal_checks"].items():
+                st.write(("✅" if v else "❌") + " " + k)
+
+            st.markdown("**Filters (basic safety filters):**")
+            for k, v in exp["filter_checks"].items():
+                st.write(("✅" if v else "❌") + " " + k)
+
+            st.markdown("**Sizing (how big and why):**")
+            st.write(exp["sizing"])
+
+            st.markdown("**Safety checks (must pass before orders can be placed):**")
+            st.write(exp["safety"])
+
+            if advanced:
+                st.markdown("**Raw order (advanced):**")
+                st.json(exp["raw_order"])
         else:
-            st.caption("No runs yet. Once you run something, you’ll see it here.")
+            st.caption("No orders suggested in this preview.")
+    else:
+        st.caption("No preview found yet. Click “Preview trades now” to generate one.")
 
-# ---------------- Test Strategy ----------------
+    st.markdown("---")
+
+    # Step 4: Place paper orders
+    st.markdown("## Step 4 — Place paper orders (paper trading)")
+    if not val["ok"]:
+        st.warning("Blocked until Safety Check is ready + acknowledged.")
+        st.caption(val["reason"])
+
+    if st.button("Place paper orders", disabled=not val["ok"]):
+        ms = int(cfg_current.get("universe", {}).get("max_symbols", 60))
+        res = run_command(f"/mfp paper-cycle max_symbols={ms} dry_run=false", workspace=workspace)
+        st.markdown(res.summary_md)
+        if res.artifacts_dir:
+            st.session_state["last_exec_dir"] = str(res.artifacts_dir)
+            st.button("Open execution files", on_click=open_folder, args=(res.artifacts_dir,))
+        st.rerun()
+
+    st.markdown("---")
+
+    # Step 5: View results
+    st.markdown("## Step 5 — View results")
+    exec_dir = None
+    if "last_exec_dir" in st.session_state:
+        p = Path(st.session_state["last_exec_dir"])
+        if p.exists():
+            exec_dir = p
+
+    if exec_dir:
+        st.success(f"Latest execution: `{exec_dir.name}`")
+        ack = (
+            read_json_safe(exec_dir / "orders.json")
+            or read_json_safe(exec_dir / "paper_broker_ack.json")
+            or {}
+        )
+        st.write("Placed:", len(ack.get("placed", [])))
+        st.write("Skipped:", len(ack.get("skipped", [])))
+        st.button("Open execution folder", on_click=open_folder, args=(exec_dir,))
+        if advanced:
+            st.json(ack)
+    else:
+        st.caption("No execution run yet today (that’s okay).")
+
+# ======================================================================================
+# 2) Backtests
+# ======================================================================================
 with tabs[1]:
-    st.subheader("Test Strategy (Backtests)")
-    st.caption("This is how you build confidence before placing any trades.")
+    st.subheader("Backtests")
+    st.caption("Run backtests to evaluate results across time horizons before execution.")
 
     start = st.text_input(
         "Start date (YYYY-MM-DD)", cfg_current.get("pretrade_check", {}).get("start", "2011-01-01")
@@ -180,100 +310,123 @@ with tabs[1]:
                 st.dataframe(pd.DataFrame(sweep.get("rows", [])))
             st.button("Open sweep folder", on_click=open_folder, args=(res.artifacts_dir,))
 
-    st.info("Tip: After reviewing results, go back to **Start Here** and click the acknowledge button.")
-
-# ---------------- Practice Trading ----------------
+# ======================================================================================
+# 3) Practice Trading
+# ======================================================================================
 with tabs[2]:
-    st.subheader("Practice Trading (Paper)")
-    st.caption(
-        "You can always preview. Placing paper orders requires a passing Safety Check + acknowledgement."
-    )
+    st.subheader("Practice Trading (paper)")
+    st.caption("Preview trades anytime. Placing paper orders is blocked until Safety Check is ready.")
 
     ms = int(cfg_current.get("universe", {}).get("max_symbols", 60))
     val = validate_pretrade_certificate(workspace, cfg_current)
 
     col1, col2 = st.columns(2)
-
     with col1:
-        st.markdown("### Preview trades (no orders)")
-        if st.button("Preview trades now"):
+        if st.button("Preview trades (no orders)"):
             res = run_command(f"/mfp paper-cycle max_symbols={ms} dry_run=true", workspace=workspace)
             st.markdown(res.summary_md)
             if res.artifacts_dir:
-                st.button("Open preview files", on_click=open_folder, args=(res.artifacts_dir,))
-
+                st.button("Open files", on_click=open_folder, args=(res.artifacts_dir,))
     with col2:
-        st.markdown("### Place paper orders")
-        if not val["ok"]:
-            st.warning("Blocked until Safety Check is ready.")
-            st.caption(val["reason"])
-
         if st.button("Place paper orders", disabled=not val["ok"]):
             res = run_command(f"/mfp paper-cycle max_symbols={ms} dry_run=false", workspace=workspace)
             st.markdown(res.summary_md)
             if res.artifacts_dir:
-                st.button("Open execution files", on_click=open_folder, args=(res.artifacts_dir,))
+                st.button("Open files", on_click=open_folder, args=(res.artifacts_dir,))
 
-    st.markdown("---")
-    st.markdown("### Stops / protection")
-    if st.button("Reconcile + place protective stops"):
-        res = run_command(f"/mfp paper-reconcile max_symbols={ms} place_stops=true", workspace=workspace)
-        st.markdown(res.summary_md)
-        if res.artifacts_dir:
-            st.button("Open reconcile files", on_click=open_folder, args=(res.artifacts_dir,))
+    if not val["ok"]:
+        st.warning("Blocked until Safety Check passes + acknowledged.")
+        st.caption(val["reason"])
 
-# ---------------- Activity & Files ----------------
+# ======================================================================================
+# 4) Activity & Files (includes “Why?” panel for any run)
+# ======================================================================================
 with tabs[3]:
     st.subheader("Activity & Files")
-    st.caption("Browse any run folder, open artifacts, and verify file integrity (tamper check).")
+    st.caption("Browse any run, open artifacts, and run a tamper check (integrity).")
 
-    runs = list_run_dirs(workspace, limit=100)
+    runs = list_run_dirs(workspace, limit=120)
     if not runs:
-        st.info("No runs found yet. Run a Safety Check or Preview trades to generate files.")
+        st.info("No runs found yet.")
     else:
         run_name = st.selectbox("Choose a run folder", [r.name for r in runs])
         run_dir = workspace / "reports" / run_name
 
-        st.write("Folder:", str(run_dir))
-        if st.button("Open in Explorer"):
+        if st.button("Open folder in Explorer"):
             open_folder(run_dir)
 
         integ = verify_manifest(run_dir)
         if integ.get("ok"):
-            st.success("Integrity check: PASS ✅ (files match manifest hashes)")
+            st.success("Integrity check: PASS ✅")
         else:
             st.error("Integrity check: FAIL ❌")
-            st.json(integ)
+            if advanced:
+                st.json(integ)
 
-        files = sorted([p for p in run_dir.glob("*") if p.is_file()], key=lambda x: x.name)
-        fsel = st.selectbox("Open a file", [p.name for p in files])
-        fp = run_dir / fsel
+        intents = read_json_safe(run_dir / "orderIntents.json") or []
+        if intents:
+            st.markdown("### Orders in this run")
+            st.dataframe(orders_table(intents), use_container_width=True)
 
-        if fp.suffix.lower() == ".json":
-            st.json(json.loads(fp.read_text(encoding="utf-8")))
-        elif fp.suffix.lower() in (".md", ".txt"):
-            st.markdown(fp.read_text(encoding="utf-8", errors="ignore"))
-        elif fp.suffix.lower() == ".csv":
-            df = read_csv_safe(fp)
-            if df is None:
-                st.error("Could not read CSV.")
-            else:
-                st.dataframe(df)
+            st.markdown("### Why was this trade suggested?")
+            pick = st.selectbox(
+                "Pick an order to explain",
+                [
+                    f"{o.get('side', '?').upper()} {o.get('symbol')} qty={o.get('qty')} ({o.get('reason', '')})"
+                    for o in intents
+                ],
+                key="why_pick_ledger",
+            )
+            idx = [
+                f"{o.get('side', '?').upper()} {o.get('symbol')} qty={o.get('qty')} ({o.get('reason', '')})"
+                for o in intents
+            ].index(pick)
+            order = intents[idx]
+            ctx = load_run_context(run_dir, workspace)
+            exp = explain_order(order, ctx)
+
+            st.info(exp["summary"])
+            st.write("Signal checks:", exp["signal_checks"])
+            st.write("Filters:", exp["filter_checks"])
+            st.write("Sizing:", exp["sizing"])
+            st.write("Safety:", exp["safety"])
+
+            if advanced:
+                st.json(exp)
         else:
-            st.code(fp.read_text(encoding="utf-8", errors="ignore")[:5000])
+            st.caption("No order intents found in this run.")
 
-# ---------------- Change Settings (with approvals) ----------------
+        if advanced:
+            st.markdown("---")
+            st.markdown("### File viewer (advanced)")
+            files = sorted([p for p in run_dir.glob("*") if p.is_file()], key=lambda x: x.name)
+            fsel = st.selectbox("Open a file", [p.name for p in files])
+            fp = run_dir / fsel
+            if fp.suffix.lower() == ".json":
+                st.json(read_json_safe(fp))
+            elif fp.suffix.lower() in (".md", ".txt"):
+                st.markdown(fp.read_text(encoding="utf-8", errors="ignore"))
+            elif fp.suffix.lower() == ".csv":
+                df = read_csv_safe(fp)
+                if df is None:
+                    st.error("Could not read CSV.")
+                else:
+                    st.dataframe(df)
+            else:
+                st.code(fp.read_text(encoding="utf-8", errors="ignore")[:5000])
+
+# ======================================================================================
+# 5) Change Settings (with approvals)
+# ======================================================================================
 with tabs[4]:
     st.subheader("Change Settings (with approvals)")
-    st.caption("Changes flow: Create Change Request → Approve → Apply. Unsafe changes are blocked.")
+    st.caption("Changes flow: Create → Approve → Apply. Unsafe changes are blocked.")
 
     st.markdown(f"**Current Settings ID:** `{_short(settings_id)}`")
 
-    draft = copy.deepcopy(cfg_current)
+    draft = json.loads(json.dumps(cfg_current))  # safe deep copy
 
-    st.markdown("### Draft settings (edit here)")
     c1, c2, c3 = st.columns(3)
-
     with c1:
         draft["universe"]["max_symbols"] = st.number_input(
             "Universe size (max symbols)", 10, 400, int(draft["universe"]["max_symbols"]), 1
@@ -318,16 +471,14 @@ with tabs[4]:
     if guard["ok"]:
         st.success("Safety rules: PASS ✅")
     else:
-        st.error("Safety rules: FAIL ❌ (this will be blocked from Apply)")
+        st.error("Safety rules: FAIL ❌ (will be blocked from Apply)")
         for v in guard["violations"]:
             st.write(f"- ❌ {v['message']}")
-
     if guard["warnings"]:
         st.warning("Warnings (allowed, but consider reviewing):")
         for w in guard["warnings"]:
             st.write(f"- ⚠️ {w['message']}")
 
-    st.markdown("---")
     if st.button("Create Change Request"):
         try:
             pr = create_proposal_from_dials(workspace, proposed_cfg=draft, created_by="human")
@@ -336,50 +487,35 @@ with tabs[4]:
         except Exception as e:
             st.error(f"Could not create change request: {type(e).__name__}: {e}")
 
-    st.markdown("### Pending change requests")
     proposals = list_proposals(workspace)
+    st.markdown("### Change requests")
     if not proposals:
         st.caption("No change requests yet.")
     else:
-        table = []
-        for p in proposals:
-            table.append(
-                {
-                    "proposal_id": p["proposal_id"],
-                    "status": p["status"],
-                    "from_settings_id": _short(p["base_config_hash"]),
-                    "to_settings_id": _short(p["proposed_config_hash"]),
-                    "guardrails_ok": bool(p.get("guardrails", {}).get("ok", False)),
-                    "created_ts_utc": p.get("created_ts_utc"),
-                }
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "proposal_id": p["proposal_id"],
+                        "status": p["status"],
+                        "from_settings_id": _short(p["base_config_hash"]),
+                        "to_settings_id": _short(p["proposed_config_hash"]),
+                        "safety_ok": bool(p.get("guardrails", {}).get("ok", False)),
+                        "created": p.get("created_ts_utc"),
+                    }
+                    for p in proposals
+                ]
             )
-        st.dataframe(pd.DataFrame(table))
+        )
 
         sel = st.selectbox("Select a change request", [p["proposal_id"] for p in proposals])
         pr = load_proposal(workspace, sel)
 
-        st.markdown("#### Details")
-        st.write("Status:", pr["status"])
-        st.write("From Settings ID:", _short(pr["base_config_hash"]))
-        st.write("To Settings ID:", _short(pr["proposed_config_hash"]))
-
-        st.markdown("##### What will change")
+        st.markdown("#### What will change")
         st.dataframe(pd.DataFrame(pr.get("changes", [])))
 
-        st.markdown("##### Safety rules result")
-        st.write("PASS:", bool(pr.get("guardrails", {}).get("ok", False)))
-        if pr.get("guardrails", {}).get("violations"):
-            st.error("Violations:")
-            for v in pr["guardrails"]["violations"]:
-                st.write(f"- ❌ {v['message']}")
-        if pr.get("guardrails", {}).get("warnings"):
-            st.warning("Warnings:")
-            for w in pr["guardrails"]["warnings"]:
-                st.write(f"- ⚠️ {w['message']}")
-
-        cA, cB, cC = st.columns(3)
-
-        with cA:
+        colA, colB, colC = st.columns(3)
+        with colA:
             if st.button("Approve"):
                 try:
                     approve_proposal(workspace, sel, approved_by="human")
@@ -388,17 +524,17 @@ with tabs[4]:
                 except Exception as e:
                     st.error(f"Approve failed: {type(e).__name__}: {e}")
 
-        with cB:
+        with colB:
             can_apply = (pr["status"] == "APPROVED") and bool(pr.get("guardrails", {}).get("ok", False))
             if st.button("Apply (make active)", disabled=not can_apply):
                 try:
                     apply_proposal(workspace, sel, applied_by="human")
-                    st.success("Applied. Your Settings ID changed, so you should re-run the Safety Check.")
+                    st.success("Applied. Your Settings ID changed — run Safety Check again.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Apply failed: {type(e).__name__}: {e}")
 
-        with cC:
+        with colC:
             if st.button("Reject"):
                 try:
                     reject_proposal(workspace, sel, rejected_by="human", reason="Rejected in UI")
@@ -408,17 +544,19 @@ with tabs[4]:
                     st.error(f"Reject failed: {type(e).__name__}: {e}")
 
     st.markdown("---")
-    st.markdown("### Change History (Settings ID lineage)")
+    st.markdown("### Change history (Settings ID lineage)")
     hist = read_changelog(workspace, limit=200)
-    if not hist:
-        st.caption("No applied changes yet.")
-    else:
+    if hist:
         st.dataframe(pd.DataFrame(hist))
+    else:
+        st.caption("No applied changes yet.")
 
-# ---------------- Prototype ----------------
+# ======================================================================================
+# 6) Prototype
+# ======================================================================================
 with tabs[5]:
     st.subheader("Prototype (embedded HTML)")
-    st.caption("Place your prototype file at: prototype/fortress_trading_agent_prototype.html")
+    st.caption("Put your file here: prototype/fortress_trading_agent_prototype.html")
 
     proto = workspace / "prototype" / "fortress_trading_agent_prototype.html"
     if proto.exists():
