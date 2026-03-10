@@ -1,66 +1,45 @@
 from __future__ import annotations
 
-import io
+import csv
 from pathlib import Path
 
-import pandas as pd
 import requests
 
-FALLBACK = [
-    "AAPL","MSFT","AMZN","NVDA","GOOGL","GOOG","META","TSLA","BRK-B","JPM","V","MA","UNH","XOM","LLY",
-    "AVGO","HD","COST","PG","JNJ","ABBV","MRK","PEP","KO","WMT","CSCO","ORCL","CRM","NFLX","BAC",
-    "ADBE","TMO","ACN","LIN","MCD","ABT","INTU","AMD","DIS","DHR","NKE","WFC","PM","TXN","QCOM",
-    "IBM","GE","AMGN","NOW","CAT","GS","MS","BLK","SPGI","RTX","ISRG","INTC","LOW","UNP","COP",
-]
 
-SOURCES = [
-    ("github-datasets", "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"),
-    ("datahub", "https://datahub.io/core/s-and-p-500-companies/r/constituents.csv"),
-]
+CSV_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
 
 
-def fetch_symbols() -> list[str] | None:
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; MidcapFortress/1.0; +https://github.com/)"}
-    for name, url in SOURCES:
-        try:
-            r = requests.get(url, headers=headers, timeout=30)
-            if r.status_code != 200:
-                print(f"[warn] {name}: HTTP {r.status_code}")
-                continue
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
-            df = pd.read_csv(io.StringIO(r.text))
-            if "Symbol" not in df.columns:
-                print(f"[warn] {name}: missing Symbol column")
-                continue
 
-            syms = (
-                df["Symbol"]
-                .astype(str)
-                .str.strip()
-                .str.replace(".", "-", regex=False)
-                .tolist()
-            )
-            syms = [s for s in syms if s and s != "nan"]
-            if len(syms) >= 200:
-                print(f"[ok] {name}: fetched {len(syms)} symbols")
-                return syms
-
-            print(f"[warn] {name}: fetched only {len(syms)} symbols")
-        except Exception as e:
-            print(f"[warn] {name}: failed ({type(e).__name__}: {e})")
-    return None
+def _out_path() -> Path:
+    return _repo_root() / "src" / "mfp" / "data" / "sp500_tickers.txt"
 
 
 def main() -> None:
-    syms = fetch_symbols()
-    if syms is None:
-        print("[warn] Could not fetch SP500 list (network blocked). Writing fallback list.")
-        syms = FALLBACK
+    out_path = _out_path()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    out = Path("src/mfp/data/sp500_tickers.txt")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("# SP500 tickers (generated)\n" + "\n".join(syms) + "\n", encoding="utf-8", newline="\n")
-    print(f"Wrote {len(syms)} tickers -> {out}")
+    headers = {
+        # Helps avoid “bot” blocking on many hosts
+        "User-Agent": "midcap-fortress/1.0 (+paper; research)",
+    }
+    r = requests.get(CSV_URL, headers=headers, timeout=30)
+    r.raise_for_status()
+
+    reader = csv.DictReader(r.text.splitlines())
+    tickers: list[str] = []
+    for row in reader:
+        sym = (row.get("Symbol") or "").strip().upper()
+        if not sym:
+            continue
+        tickers.append(sym)
+
+    tickers = sorted(set(tickers))
+
+    out_path.write_text("\n".join(tickers) + "\n", encoding="utf-8", newline="\n")
+    print(f"Wrote {len(tickers)} tickers to {out_path}")
 
 
 if __name__ == "__main__":
