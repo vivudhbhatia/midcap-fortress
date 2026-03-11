@@ -6,10 +6,30 @@ from pathlib import Path
 import pandas as pd
 
 from mfp.backtest.metrics import compute_metrics
-from mfp.data.universe_sp400 import get_universe_sp400
+from mfp.data.universe import get_universe as _get_universe
 from mfp.data.yfinance_provider import load_prices_yf
 from mfp.indicators import atr, rsi, sma
 from mfp.strategy.midcap_pulse_v1 import params_for_timeframe
+
+
+# --- Universe helpers (backwards compatible) ---
+# Tests monkeypatch get_universe_sp400; keep it stable.
+def get_universe_sp400() -> list[str]:
+    return _get_universe("sp400")
+
+
+def get_universe_sp500() -> list[str]:
+    return _get_universe("sp500")
+
+
+def get_universe(universe_name: str) -> list[str]:
+    n = (universe_name or "sp400").strip().lower()
+    if n in {"sp400", "mid", "midcap"}:
+        return get_universe_sp400()
+    if n in {"sp500", "large", "largecap"}:
+        return get_universe_sp500()
+    # supports both / custom:... etc via mfp.data.universe
+    return _get_universe(universe_name)
 
 
 def _resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
@@ -61,14 +81,10 @@ def run_backtest(
 ) -> dict:
     # Ensure output directory exists (important for tests and fresh runs)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    if universe_name != "sp400":
-        universe_name = "sp400"
-
     start_ts = pd.Timestamp(start)
     end_ts = pd.Timestamp(end)
 
-    tickers = get_universe_sp400()
+    tickers = get_universe(universe_name)
     if max_symbols:
         tickers = tickers[:max_symbols]
 

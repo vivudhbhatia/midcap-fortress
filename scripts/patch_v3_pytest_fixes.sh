@@ -1,3 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> Patch v3 pytest failures (engine universe compat + restore fortress guardrails)"
+
+# 1) Patch backtest engine so:
+#   - get_universe_sp400 exists again (tests monkeypatch it)
+#   - sp400-forcing is removed (so sp500/both works)
+#   - run_backtest uses get_universe(universe_name)
+python - <<'PY'
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+p = Path("src/mfp/backtest/engine.py")
+if not p.exists():
+    raise SystemExit("src/mfp/backtest/engine.py not found")
+
+txt = p.read_text(encoding="utf-8")
+
+# Remove the old "force sp400 always" block if present
+txt2 = re.sub(
+    r"\n\s*if\s+universe_name\s*!=\s*['\"]sp400['\"]\s*:\s*\n\s*universe_name\s*=\s*['\"]sp400['\"]\s*\n",
+    "\n",
+    txt,
+)
+
+# Ensure we import the generic universe resolver as _get_universe
+txt2 = txt2.replace(
+    "from mfp.data.universe_sp400 import get_universe_sp400",
+    "from mfp.data.universe import get_universe as _get_universe",
+)
+txt2 = txt2.replace(
+    "from mfp.data.universe import get_universe",
+    "from mfp.data.universe import get_universe as _get_universe",
+)
+
+# Ensure tickers selection uses get_universe(universe_name) (wrapper below)
+txt2 = re.sub(
+    r"tickers\s*=\s*get_universe_sp400\(\)",
+    "tickers = get_universe(universe_name)",
+    txt2,
+)
+
+# Insert backwards-compatible helpers + wrapper get_universe (so tests can monkeypatch get_universe_sp400)
+marker = "from mfp.data.universe import get_universe as _get_universe"
+if "def get_universe_sp400" not in txt2:
+    if marker not in txt2:
+        # Insert marker after last import line
+        lines = txt2.splitlines()
+        last_import = 0
+        for i, line in enumerate(lines):
+            if line.startswith("import ") or line.startswith("from "):
+                last_import = i
+        lines.insert(last_import + 1, marker)
+        txt2 = "\n".join(lines) + "\n"
+
+    lines = txt2.splitlines()
+    idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == marker:
+            idx = i
+            break
+    if idx is None:
+        raise SystemExit("Could not locate universe import marker to insert helpers.")
+
+    helper_block = [
+        "",
+        "# --- Universe helpers (backwards compatible) ---",
+        "# Tests monkeypatch get_universe_sp400; keep it stable.",
+        "def get_universe_sp400() -> list[str]:",
+        '    return _get_universe("sp400")',
+        "",
+        "def get_universe_sp500() -> list[str]:",
+        '    return _get_universe("sp500")',
+        "",
+        "def get_universe(universe_name: str) -> list[str]:",
+        '    n = (universe_name or "sp400").strip().lower()',
+        '    if n in {"sp400", "mid", "midcap"}:',
+        "        return get_universe_sp400()",
+        '    if n in {"sp500", "large", "largecap"}:',
+        "        return get_universe_sp500()",
+        "    # supports both / custom:... etc via mfp.data.universe",
+        "    return _get_universe(universe_name)",
+        "",
+    ]
+    lines[idx + 1:idx + 1] = helper_block
+    txt2 = "\n".join(lines) + "\n"
+
+if txt2 != txt:
+    p.write_text(txt2, encoding="utf-8", newline="\n")
+    print("[ok] Patched src/mfp/backtest/engine.py")
+else:
+    print("[info] No changes needed in src/mfp/backtest/engine.py")
+PY
+
+# 2) Restore fortress guardrails (v2 rules) AND keep v3 portfolio allocation checks
+cat > src/mfp/governance/guardrails.py <<'PY'
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -189,9 +288,8 @@ def check_guardrails(cfg: Dict[str, Any]) -> Dict[str, Any]:
         "portfolio_allocation_sum": alloc_sum,
     }
 
-    return {
-        "ok": len(violations) == 0,
-        "violations": violations,
-        "warnings": warnings,
-        "evaluated": evaluated,
-    }
+    return {"ok": len(violations) == 0, "violations": violations, "warnings": warnings, "evaluated": evaluated}
+PY
+
+echo "==> Patch done."
+echo "==> Next: ./scripts/fix.sh && ./scripts/check.sh && pytest -q"

@@ -1,3 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> Fixing: (1) Ruff E402 in backtest engine (2) restore /mfp backtest-sweep in opsbot"
+
+# -----------------------------------------------------------------------------
+# (1) Fix E402 in src/mfp/backtest/engine.py by moving helper block below imports
+# -----------------------------------------------------------------------------
+python - <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+
+p = Path("src/mfp/backtest/engine.py")
+if not p.exists():
+    raise SystemExit("src/mfp/backtest/engine.py not found")
+
+lines = p.read_text(encoding="utf-8").splitlines(True)
+
+start = None
+for i, line in enumerate(lines):
+    if "# --- Universe helpers (backwards compatible) ---" in line:
+        start = i
+        break
+
+if start is None:
+    print("[info] No helper block found; nothing to move.")
+    raise SystemExit(0)
+
+# Helper block ends right before the next top-level import line that appears after it
+end = None
+for j in range(start + 1, len(lines)):
+    s = lines[j]
+    if (s.startswith("import ") or s.startswith("from ")) and (len(s) > 0 and not s.startswith(" ")):
+        end = j
+        break
+
+if end is None:
+    # If no import follows, move block before first top-level def
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("def ") or lines[j].startswith("class "):
+            end = j
+            break
+
+if end is None:
+    end = len(lines)
+
+helper = lines[start:end]
+del lines[start:end]
+
+# Insert helper block just before the first top-level def/class (after all imports)
+insert_at = None
+for i, line in enumerate(lines):
+    if line.startswith("def ") or line.startswith("class "):
+        insert_at = i
+        break
+
+if insert_at is None:
+    insert_at = len(lines)
+
+# Ensure there is a blank line before inserting (style)
+if insert_at > 0 and lines[insert_at - 1].strip() != "":
+    helper = ["\n"] + helper
+
+lines[insert_at:insert_at] = helper
+
+p.write_text("".join(lines), encoding="utf-8", newline="\n")
+print("[ok] Moved universe helper block below imports in src/mfp/backtest/engine.py")
+PY
+
+# -----------------------------------------------------------------------------
+# (2) Restore /mfp backtest-sweep in src/mfp/ui/github_opsbot.py (keep v3 commands)
+# -----------------------------------------------------------------------------
+cat > src/mfp/ui/github_opsbot.py <<'PY'
 from __future__ import annotations
 
 import json
@@ -86,25 +160,16 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
         _wjson(out_dir / "sweep.json", {"start": start, "end": end, "universe": universe_name, "rows": rows})
 
         zip_path = create_evidence_zip(out_dir)
-        manifest_path = write_manifest(
-            out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd, **kv}
-        )
+        manifest_path = write_manifest(out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd, **kv})
         append_runlog(workspace, {"kind": cmd, "out_dir": str(out_dir), "ok": True})
 
-        md = [
-            "✅ Backtest sweep complete",
-            "",
-            f"- universe: `{universe_name}`",
-            f"- start: `{start}`",
-            f"- end: `{end}`",
-            "",
-        ]
+        md = ["✅ Backtest sweep complete", "", f"- universe: `{universe_name}`", f"- start: `{start}`", f"- end: `{end}`", ""]
         for r in rows:
             m = r["metrics"]
             md.append(
                 f"- {r['timeframe']}: "
-                f"CAGR {m.get('cagr', 0) * 100:.2f}% | "
-                f"MaxDD {m.get('max_drawdown', 0) * 100:.2f}% | "
+                f"CAGR {m.get('cagr', 0)*100:.2f}% | "
+                f"MaxDD {m.get('max_drawdown', 0)*100:.2f}% | "
                 f"Trades {m.get('num_trades', 0)}"
             )
         md.append(f"\nArtifacts: `{out_dir}`")
@@ -114,9 +179,9 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
 
     # ---------------- portfolio safety check (v3) ----------------
     if cmd == "portfolio-safety-check":
-        from mfp.backtest.engine import run_backtest
         from mfp.governance.portfolio_safety import write_certificate
         from mfp.objectives.evaluator import evaluate_objectives
+        from mfp.backtest.engine import run_backtest
 
         start = kv.get("start", cfg.get("pretrade_check", {}).get("start", "2011-01-01"))
         end = kv.get("end", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
@@ -140,11 +205,7 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
                 results["strategies"][sid] = {"skipped": True, "reason": "trend_hold_not_in_safety_check_v3"}
                 continue
 
-            universe_name = (
-                ("custom:" + ",".join([str(x).upper() for x in symbols]))
-                if symbols
-                else (universe or "sp400")
-            )
+            universe_name = ("custom:" + ",".join([str(x).upper() for x in symbols])) if symbols else (universe or "sp400")
 
             tf_rows = []
             for tf in ["1d", "1wk", "1mo"]:
@@ -183,16 +244,10 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
         _wjson(out_dir / "portfolio_safety_results.json", cert)
 
         zip_path = create_evidence_zip(out_dir)
-        manifest_path = write_manifest(
-            out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd, **kv}
-        )
+        manifest_path = write_manifest(out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd, **kv})
         append_runlog(workspace, {"kind": cmd, "out_dir": str(out_dir), "ok": True, "pass": cert["pass"]})
 
-        return CmdResult(
-            True,
-            f"✅ Portfolio Safety Check complete (pass={cert['pass']}).\nManifest: `{manifest_path.name}`\n",
-            out_dir,
-        )
+        return CmdResult(True, f"✅ Portfolio Safety Check complete (pass={cert['pass']}).\nManifest: `{manifest_path.name}`\n", out_dir)
 
     if cmd == "portfolio-safety-ack":
         from mfp.governance.portfolio_safety import acknowledge
@@ -204,9 +259,7 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
             zip_path = create_evidence_zip(out_dir)
             manifest_path = write_manifest(out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd})
             append_runlog(workspace, {"kind": cmd, "out_dir": str(out_dir), "ok": True})
-            return CmdResult(
-                True, f"✅ Acknowledged portfolio safety check.\nManifest: `{manifest_path.name}`\n", out_dir
-            )
+            return CmdResult(True, f"✅ Acknowledged portfolio safety check.\nManifest: `{manifest_path.name}`\n", out_dir)
         except Exception as e:
             return CmdResult(False, f"❌ Ack failed: {type(e).__name__}: {e}\n", out_dir)
 
@@ -220,25 +273,17 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
         if (not dry_run) and require:
             v = validate_certificate(workspace, cfg, require_reviewed=True)
             if not bool(v.get("ok", False)):
-                return CmdResult(
-                    False, f"❌ BLOCKED by Portfolio Safety Check: `{v.get('reason')}`\n", out_dir
-                )
+                return CmdResult(False, f"❌ BLOCKED by Portfolio Safety Check: `{v.get('reason')}`\n", out_dir)
 
         port_dir = out_dir / "portfolio"
         r = run_portfolio_cycle(workspace=workspace, out_dir=port_dir, dry_run=dry_run)
         _wjson(out_dir / "portfolio_run.json", r)
 
         zip_path = create_evidence_zip(out_dir)
-        manifest_path = write_manifest(
-            out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd, **kv}
-        )
+        manifest_path = write_manifest(out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd, **kv})
         append_runlog(workspace, {"kind": cmd, "out_dir": str(out_dir), "ok": True, "dry_run": dry_run})
 
-        return CmdResult(
-            True,
-            f"✅ Portfolio run complete (preview={dry_run}).\nManifest: `{manifest_path.name}`\n",
-            out_dir,
-        )
+        return CmdResult(True, f"✅ Portfolio run complete (preview={dry_run}).\nManifest: `{manifest_path.name}`\n", out_dir)
 
     if cmd == "switch-suggest":
         from mfp.agents.switching import suggest_allocations, write_suggestion
@@ -259,8 +304,11 @@ def run_command(command_line: str, workspace: Path) -> CmdResult:
 
         zip_path = create_evidence_zip(out_dir)
         manifest_path = write_manifest(out_dir=out_dir, bundle={"paths": [zip_path]}, config={"cmd": cmd})
-        append_runlog(workspace, {"kind": cmd, "out_dir": str(out_dir), "ok": bool(r.get("ok", False))})
+        append_runlog(workspace, {"kind": cmd, "out_dir": str(out_dir), "ok": bool(r.get('ok', False))})
 
         return CmdResult(True, f"✅ Critic report written.\nManifest: `{manifest_path.name}`\n", out_dir)
 
     return CmdResult(False, f"❌ Unknown command: `{cmd}`\n", out_dir)
+PY
+
+echo "==> Patch complete."

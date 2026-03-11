@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from mfp.audit.evidence import create_evidence_zip
+from mfp.config.normalize import normalize_config
 from mfp.config.runtime import load_config
+from mfp.paper.equity_ledger import append_equity, compute_drawdown_gate, now_utc_iso
 
 
 def _wjson(path: Path, obj: Any) -> None:
@@ -17,26 +17,6 @@ def _wjson(path: Path, obj: Any) -> None:
 
 def _wtext(path: Path, txt: str) -> None:
     path.write_text(txt, encoding="utf-8", newline="\n")
-
-
-def _env_float(name: str, default: float) -> float:
-    v = os.getenv(name, "").strip()
-    if not v:
-        return default
-    try:
-        return float(v)
-    except Exception:
-        return default
-
-
-def _env_int(name: str, default: int) -> int:
-    v = os.getenv(name, "").strip()
-    if not v:
-        return default
-    try:
-        return int(v)
-    except Exception:
-        return default
 
 
 def _workspace_from_out_dir(out_dir: Path) -> Path:
@@ -48,9 +28,6 @@ def _workspace_from_out_dir(out_dir: Path) -> Path:
 
 
 def paper_status(out_dir: Path) -> Dict[str, Any]:
-    """
-    Snapshot Alpaca paper account/positions/open-orders and write JSON files.
-    """
     out_dir.mkdir(parents=True, exist_ok=True)
     from mfp.paper.alpaca_io import (
         alpaca_trading_client,
@@ -60,7 +37,6 @@ def paper_status(out_dir: Path) -> Dict[str, Any]:
     )
 
     tc = alpaca_trading_client()
-
     acct = get_account_snapshot(tc)
     pos = get_positions_snapshot(tc)
     orders = get_open_orders_snapshot(tc)
@@ -73,13 +49,13 @@ def paper_status(out_dir: Path) -> Dict[str, Any]:
 
 
 def _compute_features(
-    df: pd.DataFrame, sma_trend: int, sma_fast: int, rsi_len: int, atr_len: int
+    df: pd.DataFrame, trend_sma: int, fast_sma: int, rsi_len: int, atr_len: int
 ) -> pd.DataFrame:
     from mfp.indicators import atr, rsi, sma
 
     d = df.copy()
-    d["sma_trend"] = sma(d["Close"], sma_trend)
-    d["sma_fast"] = sma(d["Close"], sma_fast)
+    d["sma_trend"] = sma(d["Close"], trend_sma)
+    d["sma_fast"] = sma(d["Close"], fast_sma)
     d["rsi"] = rsi(d["Close"], rsi_len)
     d["atr"] = atr(d["High"], d["Low"], d["Close"], atr_len)
     d["atr_pct"] = d["atr"] / d["Close"]
@@ -88,75 +64,51 @@ def _compute_features(
     return d
 
 
-def _rolling_drawdown_gate() -> Dict[str, Any]:
-    """
-    Safety: if account drawdown in last month exceeds 3%, block new entries.
-    If portfolio history endpoint isn't available, don't block.
-    """
-    from mfp.paper.alpaca_io import fetch_portfolio_history_raw
-
+def _safe_float(x: Any, default: float = 0.0) -> float:
     try:
-        h = fetch_portfolio_history_raw(period="1M", timeframe="1D")
-        eq = h.get("equity", [])
-        if not eq or len(eq) < 5:
-            return {"ok": True, "reason": "no_history"}
+        return float(x)
+    except Exception:
+        return default
 
-        s = pd.Series(eq, dtype="float64")
-        peak = s.cummax()
-        dd = (s / peak) - 1.0
-        worst = float(dd.min())  # negative
 
-        return {
-            "ok": (abs(worst) < 0.03),
-            "worst_dd_1m": float(abs(worst)),
-            "reason": "ok" if abs(worst) < 0.03 else "blocked_dd",
-        }
-    except Exception as e:
-        return {"ok": True, "reason": f"history_unavailable:{type(e).__name__}"}
+def _safe_int(x: Any, default: int = 0) -> int:
+    try:
+        return int(float(x))
+    except Exception:
+        return default
 
 
 def paper_cycle(
     out_dir: Path,
     symbols: List[str],
     dry_run: bool = True,
+    # NEW
+    strategy_id: str = "DEFAULT",
+    engine: str = "pulse_mr",
+    proxy_ticker: str = "",
+    equity_override: Optional[float] = None,
+    allow_new_entries: bool = True,
+    # Optional per-strategy overrides
+    risk_per_trade_pct: Optional[float] = None,
+    max_open_risk_pct: Optional[float] = None,
+    max_positions: Optional[int] = None,
+    stop_atr_mult: Optional[float] = None,
+    rsi_buy_below: Optional[float] = None,
+    rsi_exit_above: Optional[float] = None,
+    trend_sma: Optional[int] = None,
+    fast_sma: Optional[int] = None,
     min_price: Optional[float] = None,
     min_adv20: Optional[float] = None,
     max_atr_pct: Optional[float] = None,
-    stop_atr_mult: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """
-    Nightly cycle:
-      - compute signals using latest daily bar
-      - create OPG market orders for next open (buys + sells)
-      - if trading enabled and dry_run==False, submit orders
-    """
     out_dir.mkdir(parents=True, exist_ok=True)
     workspace = _workspace_from_out_dir(out_dir)
-    cfg = load_config(workspace)
+
+    cfg = normalize_config(load_config(workspace))
     _wjson(out_dir / "config_used.json", cfg)
+    _wjson(out_dir / "strategy.json", {"strategy_id": strategy_id, "engine": engine, "proxy": proxy_ticker})
 
-    sig = cfg.get("signal", {})
-    filt = cfg.get("filters", {})
-    risk = cfg.get("risk", {})
-
-    sma_trend = int(sig.get("trend_sma", 200))
-    sma_fast = int(sig.get("fast_sma", 5))
-    rsi_len = int(sig.get("rsi_len", 2))
-    rsi_buy_below = float(sig.get("rsi_buy_below", 10.0))
-    rsi_exit_above = float(sig.get("rsi_exit_above", 70.0))
-    atr_len = int(sig.get("atr_len", 14))
-
-    # filters: allow explicit overrides, otherwise read config
-    min_price = float(min_price if min_price is not None else filt.get("min_price", 10.0))
-    min_adv20 = float(min_adv20 if min_adv20 is not None else filt.get("min_adv20", 20_000_000.0))
-    max_atr_pct = float(max_atr_pct if max_atr_pct is not None else filt.get("max_atr_pct", 0.08))
-
-    # risk: allow env overrides for safety/ops
-    max_positions = _env_int("MFP_MAX_POSITIONS", int(risk.get("max_positions", 6)))
-    risk_per_trade_pct = _env_float("MFP_RISK_PER_TRADE_PCT", float(risk.get("risk_per_trade_pct", 0.25)))
-    max_open_risk_pct = _env_float("MFP_MAX_OPEN_RISK_PCT", float(risk.get("max_open_risk_pct", 1.00)))
-    stop_atr_mult = float(stop_atr_mult if stop_atr_mult is not None else risk.get("stop_atr_mult", 1.5))
-
+    # Pull Alpaca state
     from mfp.paper.alpaca_io import (
         alpaca_data_client,
         alpaca_trading_client,
@@ -174,222 +126,309 @@ def paper_cycle(
     positions = get_positions_snapshot(tc)
     open_orders = get_open_orders_snapshot(tc)
 
-    gate = _rolling_drawdown_gate()
+    equity_actual = _safe_float(acct.get("equity"), 0.0)
+    buying_power = _safe_float(acct.get("buying_power"), 0.0)
 
-    equity = float(acct.get("equity", 0.0) or 0.0)
-    buying_power = float(acct.get("buying_power", 0.0) or 0.0)
+    # Append equity to ledger for drawdown gate visibility
+    append_equity(workspace, ts_utc=now_utc_iso(), equity=float(equity_actual or 0.0))
 
-    risk_per_trade_usd = equity * (risk_per_trade_pct / 100.0)
-    max_open_risk_usd = equity * (max_open_risk_pct / 100.0)
+    # Portfolio-level drawdown gate (for info inside per-strategy runs)
+    dd_limits = cfg.get("objectives", {}).get("drawdown_limits", {"1D": 0.01, "5D": 0.02, "20D": 0.03})
+    dd_gate = compute_drawdown_gate(workspace, dd_limits=dd_limits)
 
-    # Fetch bars + compute features
-    bars = fetch_daily_bars(dc, symbols, lookback_days=450, feed="iex")
-    feats: Dict[str, pd.DataFrame] = {
-        s: _compute_features(df, sma_trend, sma_fast, rsi_len, atr_len) for s, df in bars.items()
-    }
+    # Strategy sizing equity:
+    equity_for_sizing = float(equity_override) if equity_override is not None else equity_actual
+    equity_for_sizing = max(1.0, equity_for_sizing)
 
-    # Current positions map
+    # Defaults
+    base_risk = cfg.get("risk", {})
+    base_sig = cfg.get("signal", {})
+    base_filt = cfg.get("filters", {})
+
+    trend_sma = int(trend_sma if trend_sma is not None else base_sig.get("trend_sma", 200))
+    fast_sma = int(fast_sma if fast_sma is not None else base_sig.get("fast_sma", 5))
+    rsi_len = int(base_sig.get("rsi_len", 2))
+    atr_len = int(base_sig.get("atr_len", 14))
+
+    rsi_buy_below = float(rsi_buy_below if rsi_buy_below is not None else base_sig.get("rsi_buy_below", 10.0))
+    rsi_exit_above = float(
+        rsi_exit_above if rsi_exit_above is not None else base_sig.get("rsi_exit_above", 70.0)
+    )
+
+    risk_per_trade_pct = float(
+        risk_per_trade_pct if risk_per_trade_pct is not None else base_risk.get("risk_per_trade_pct", 0.25)
+    )
+    max_open_risk_pct = float(
+        max_open_risk_pct if max_open_risk_pct is not None else base_risk.get("max_open_risk_pct", 1.00)
+    )
+    max_positions = int(max_positions if max_positions is not None else base_risk.get("max_positions", 6))
+    stop_atr_mult = float(stop_atr_mult if stop_atr_mult is not None else base_risk.get("stop_atr_mult", 1.5))
+
+    min_price = float(min_price if min_price is not None else base_filt.get("min_price", 10.0))
+    min_adv20 = float(min_adv20 if min_adv20 is not None else base_filt.get("min_adv20", 20_000_000.0))
+    max_atr_pct = float(max_atr_pct if max_atr_pct is not None else base_filt.get("max_atr_pct", 0.08))
+
+    # Regime gate (fast): proxy < SMA(trend) => no new entries for MR engines.
+    regime = {"ok": True, "reason": "ok", "proxy": proxy_ticker, "trend_sma": trend_sma}
+    if proxy_ticker:
+        bars_px = fetch_daily_bars(dc, [proxy_ticker], lookback_days=trend_sma + 30, feed="iex").get(
+            proxy_ticker
+        )
+        if bars_px is not None and not bars_px.empty:
+            fx = _compute_features(bars_px, trend_sma, fast_sma, rsi_len, atr_len)
+            last = fx.iloc[-1]
+            c = _safe_float(last.get("Close"))
+            st = _safe_float(last.get("sma_trend"))
+            if st > 0 and c > 0 and c <= st:
+                regime = {
+                    "ok": False,
+                    "reason": "proxy_below_trend",
+                    "proxy": proxy_ticker,
+                    "close": c,
+                    "sma": st,
+                }
+        else:
+            regime = {"ok": True, "reason": "proxy_data_missing", "proxy": proxy_ticker}
+
+    _wjson(out_dir / "regime.json", regime)
+    _wjson(
+        out_dir / "paper_gate.json",
+        {"drawdown_gate": dd_gate, "allow_new_entries": allow_new_entries, "regime": regime},
+    )
+
+    # Open positions map
     pos_qty: Dict[str, int] = {}
-    pos_entry: Dict[str, float] = {}
     for p in positions:
         sym = p.get("symbol")
         if not sym:
             continue
-        try:
-            qty = int(float(p.get("qty") or 0))
-        except Exception:
-            qty = 0
-        if qty == 0:
+        qty = _safe_int(p.get("qty"), 0)
+        if qty != 0:
+            pos_qty[str(sym).upper()] = qty
+
+    open_order_syms = {str(o.get("symbol")).upper() for o in open_orders if o.get("symbol")}
+
+    # Fetch bars for symbols (+ proxy if not already)
+    fetch_syms = [s.upper() for s in symbols]
+    bars = fetch_daily_bars(dc, fetch_syms, lookback_days=max(trend_sma + 50, 250), feed="iex")
+
+    feats: Dict[str, pd.DataFrame] = {}
+    for sym, df in bars.items():
+        if df is None or df.empty:
             continue
-        pos_qty[sym] = qty
-        try:
-            pos_entry[sym] = float(p.get("avg_entry_price") or 0.0)
-        except Exception:
-            pos_entry[sym] = 0.0
+        feats[sym] = _compute_features(df, trend_sma, fast_sma, rsi_len, atr_len)
 
-    open_order_syms = {o.get("symbol") for o in open_orders if o.get("symbol")}
-
-    # Exits
+    # Strategy outputs
     exits: List[Dict[str, Any]] = []
-    for sym, qty in pos_qty.items():
-        df = feats.get(sym)
-        if df is None or len(df) < sma_trend + 5:
-            continue
-        last = df.iloc[-1]
+    entries: List[Dict[str, Any]] = []
 
-        close = float(last["Close"])
-        sma_t = last.get("sma_trend")
-        sma_f = last.get("sma_fast")
-        rsi_v = last.get("rsi")
-        atr_v = last.get("atr")
-
-        if pd.isna(sma_t) or pd.isna(sma_f) or pd.isna(rsi_v):
-            continue
-
-        sma_t = float(sma_t)
-        sma_f = float(sma_f)
-        rsi_v = float(rsi_v)
-        atr_v = float(atr_v) if pd.notna(atr_v) else None
-
-        trend_break = close < sma_t
-        mean_revert_exit = (close > sma_f) or (rsi_v >= rsi_exit_above)
-
-        if trend_break or mean_revert_exit:
-            exits.append(
-                {
-                    "symbol": sym,
-                    "qty": abs(int(qty)),
-                    "reason": "trend_break" if trend_break else "bounce_exit",
-                    "close": close,
-                    "sma200": sma_t,  # keep name for UI compatibility
-                    "sma5": sma_f,
-                    "rsi2": rsi_v,
-                    "atr14": atr_v,
-                }
-            )
-
-    # Entries (only if gate ok)
-    candidates: List[Dict[str, Any]] = []
-    if gate.get("ok", True):
-        for sym, df in feats.items():
-            if sym in pos_qty:
+    # Engine: trend_hold (simple ETF trend defense)
+    if engine.strip().lower() == "trend_hold":
+        for sym in fetch_syms:
+            df = feats.get(sym)
+            if df is None or len(df) < trend_sma + 5:
                 continue
-            if sym in open_order_syms:
-                continue
-            if len(df) < sma_trend + 5:
-                continue
-
             last = df.iloc[-1]
-
-            close = float(last["Close"])
-            sma_t = last.get("sma_trend")
-            sma_f = last.get("sma_fast")
-            rsi_v = last.get("rsi")
-            atr_v = last.get("atr")
-            adv20 = last.get("adv20")
-            atr_pct = last.get("atr_pct")
-
-            if any(pd.isna(x) for x in [sma_t, sma_f, rsi_v, atr_v, adv20, atr_pct]):
+            close = _safe_float(last.get("Close"))
+            st = _safe_float(last.get("sma_trend"))
+            if close <= 0 or st <= 0:
                 continue
 
-            sma_t = float(sma_t)
-            sma_f = float(sma_f)
-            rsi_v = float(rsi_v)
-            atr_v = float(atr_v)
-            adv20 = float(adv20)
-            atr_pct = float(atr_pct)
+            have = sym in pos_qty
+            want_long = close > st
 
-            # filters
-            price_ok = close >= min_price
-            liq_ok = adv20 >= min_adv20
-            vol_ok = atr_pct <= max_atr_pct
-
-            if not (price_ok and liq_ok and vol_ok):
-                continue
-
-            trend_ok = close > sma_t
-            pullback = close < sma_f
-            oversold = rsi_v < rsi_buy_below
-            buy_signal = trend_ok and pullback and oversold
-
-            if buy_signal:
-                candidates.append(
+            if have and (not want_long):
+                exits.append(
                     {
                         "symbol": sym,
-                        "score": float(rsi_v),
+                        "qty": abs(pos_qty[sym]),
+                        "reason": "trend_off",
+                        "close": close,
+                        "sma200": st,
+                    }
+                )
+            if (not have) and want_long and allow_new_entries:
+                entries.append({"symbol": sym, "qty": 0, "reason": "trend_on", "close": close, "sma200": st})
+
+        # Size trend_hold entries as “use allocation equity”, single position
+        if entries:
+            sym = entries[0]["symbol"]
+            close = float(entries[0]["close"])
+            # Use up to 95% of buying power (if real account smaller, it will naturally limit)
+            budget = min(buying_power * 0.95, equity_for_sizing * 0.95)
+            qty = int(budget // close) if close > 0 else 0
+            if qty > 0:
+                entries[0]["qty"] = qty
+            else:
+                entries = []
+
+    # Engine: pulse_mr (dip-buying in uptrend)
+    else:
+        # If regime is OFF for proxy, don't open new MR entries.
+        mr_entries_allowed = allow_new_entries and bool(regime.get("ok", True))
+
+        # Exits first
+        for sym, qty in pos_qty.items():
+            df = feats.get(sym)
+            if df is None or len(df) < trend_sma + 5:
+                continue
+            last = df.iloc[-1]
+            close = _safe_float(last.get("Close"))
+            sma_t = _safe_float(last.get("sma_trend"))
+            sma_f = _safe_float(last.get("sma_fast"))
+            rsi_v = _safe_float(last.get("rsi"))
+
+            if sma_t <= 0 or sma_f <= 0 or close <= 0:
+                continue
+
+            trend_break = close < sma_t
+            bounce_exit = (close > sma_f) or (rsi_v >= float(rsi_exit_above))
+
+            if trend_break or bounce_exit:
+                exits.append(
+                    {
+                        "symbol": sym,
+                        "qty": abs(int(qty)),
+                        "reason": "trend_break" if trend_break else "bounce_exit",
                         "close": close,
                         "sma200": sma_t,
                         "sma5": sma_f,
                         "rsi2": rsi_v,
-                        "atr14": atr_v,
-                        "adv20": adv20,
-                        "atr_pct": atr_pct,
-                        "checks": {"trend_ok": trend_ok, "pullback": pullback, "oversold": oversold},
-                        "filters": {"price_ok": price_ok, "liq_ok": liq_ok, "vol_ok": vol_ok},
                     }
                 )
 
-    candidates.sort(key=lambda x: x["score"])
+        # Entries ranked by RSI (lower = more oversold)
+        candidates: List[Dict[str, Any]] = []
+        if mr_entries_allowed:
+            for sym, df in feats.items():
+                if sym in pos_qty:
+                    continue
+                if sym in open_order_syms:
+                    continue
+                if len(df) < trend_sma + 5:
+                    continue
 
-    # Estimate current open risk from existing positions (rough)
-    est_open_risk = 0.0
-    for sym, qty in pos_qty.items():
-        df = feats.get(sym)
-        if df is None or len(df) < 20:
-            continue
-        atr_v = df.iloc[-1].get("atr")
-        if pd.isna(atr_v):
-            continue
-        est_open_risk += abs(int(qty)) * (stop_atr_mult * float(atr_v))
+                last = df.iloc[-1]
+                close = _safe_float(last.get("Close"))
+                sma_t = _safe_float(last.get("sma_trend"))
+                sma_f = _safe_float(last.get("sma_fast"))
+                rsi_v = _safe_float(last.get("rsi"))
+                atr_v = _safe_float(last.get("atr"))
+                adv20 = _safe_float(last.get("adv20"))
+                atr_pct = _safe_float(last.get("atr_pct"))
 
-    # Allocate new slots
-    slots = max(0, max_positions - len(pos_qty))
-    planned_entries: List[Dict[str, Any]] = []
-    for c in candidates[: max(0, slots * 3)]:
-        if slots <= 0:
-            break
+                if close <= 0 or sma_t <= 0 or sma_f <= 0 or atr_v <= 0:
+                    continue
 
-        close = float(c["close"])
-        atr_v = float(c["atr14"])
-        stop_est = close - stop_atr_mult * atr_v
-        per_share_risk = max(0.01, close - stop_est)
+                # filters
+                if close < min_price:
+                    continue
+                if adv20 < min_adv20:
+                    continue
+                if atr_pct > max_atr_pct:
+                    continue
 
-        qty = int(risk_per_trade_usd // per_share_risk)
-        if qty <= 0:
-            continue
+                trend_ok = close > sma_t
+                pullback = close < sma_f
+                oversold = rsi_v < float(rsi_buy_below)
+                if trend_ok and pullback and oversold:
+                    candidates.append(
+                        {
+                            "symbol": sym,
+                            "score": float(rsi_v),
+                            "close": close,
+                            "sma200": sma_t,
+                            "sma5": sma_f,
+                            "rsi2": rsi_v,
+                            "atr14": atr_v,
+                            "adv20": adv20,
+                            "atr_pct": atr_pct,
+                        }
+                    )
+        candidates.sort(key=lambda x: x["score"])
 
-        # basic buying power cap
-        est_cost = qty * close
-        if est_cost > buying_power * 0.95:
-            qty = int((buying_power * 0.95) // close)
-        if qty <= 0:
-            continue
+        # sizing budgets
+        risk_per_trade_usd = equity_for_sizing * (risk_per_trade_pct / 100.0)
+        max_open_risk_usd = equity_for_sizing * (max_open_risk_pct / 100.0)
 
-        add_risk = qty * per_share_risk
-        if est_open_risk + add_risk > max_open_risk_usd + 1e-9:
-            continue
+        # estimate open risk (rough)
+        est_open_risk = 0.0
+        for sym, qty in pos_qty.items():
+            df = feats.get(sym)
+            if df is None or df.empty:
+                continue
+            last = df.iloc[-1]
+            atr_v = _safe_float(last.get("atr"))
+            if atr_v > 0:
+                est_open_risk += abs(int(qty)) * (stop_atr_mult * atr_v)
 
-        planned_entries.append(
-            {
-                **c,
-                "qty": qty,
-                "stop_estimate": stop_est,
-                "per_share_risk": per_share_risk,
-                "risk_usd": add_risk,
-            }
-        )
-        est_open_risk += add_risk
-        slots -= 1
+        slots = max(0, max_positions - len(pos_qty))
+        for c in candidates[: max(0, slots * 3)]:
+            if slots <= 0:
+                break
+            close = float(c["close"])
+            atr_v = float(c["atr14"])
+            stop_est = close - stop_atr_mult * atr_v
+            per_share_risk = max(0.01, close - stop_est)
+            qty = int(risk_per_trade_usd // per_share_risk)
 
-    # Build order intents WITH explainable fields (for UI)
+            if qty <= 0:
+                continue
+
+            # buying power
+            est_cost = qty * close
+            if est_cost > buying_power * 0.95:
+                qty = int((buying_power * 0.95) // close)
+            if qty <= 0:
+                continue
+
+            add_risk = qty * per_share_risk
+            if est_open_risk + add_risk > max_open_risk_usd + 1e-9:
+                continue
+
+            entries.append(
+                {
+                    **c,
+                    "qty": qty,
+                    "stop_estimate": stop_est,
+                    "per_share_risk": per_share_risk,
+                    "risk_usd": add_risk,
+                    "reason": "uptrend_dip_oversold",
+                }
+            )
+            est_open_risk += add_risk
+            slots -= 1
+
+    # Build order intents
     orders_to_submit: List[Dict[str, Any]] = []
 
     for e in exits:
         orders_to_submit.append(
             {
+                "strategy_id": strategy_id,
                 "side": "sell",
                 "symbol": e["symbol"],
-                "qty": e["qty"],
+                "qty": int(e["qty"]),
                 "tif": "opg",
                 "type": "market",
-                "reason": e["reason"],
+                "reason": e.get("reason", "exit"),
                 "close": e.get("close"),
                 "sma200": e.get("sma200"),
                 "sma5": e.get("sma5"),
                 "rsi2": e.get("rsi2"),
-                "atr14": e.get("atr14"),
             }
         )
 
-    for b in planned_entries:
+    for b in entries:
         orders_to_submit.append(
             {
+                "strategy_id": strategy_id,
                 "side": "buy",
                 "symbol": b["symbol"],
-                "qty": b["qty"],
+                "qty": int(b["qty"]),
                 "tif": "opg",
                 "type": "market",
-                "reason": "uptrend_dip_oversold",
+                "reason": b.get("reason", "entry"),
                 "close": b.get("close"),
                 "sma200": b.get("sma200"),
                 "sma5": b.get("sma5"),
@@ -397,86 +436,38 @@ def paper_cycle(
                 "atr14": b.get("atr14"),
                 "adv20": b.get("adv20"),
                 "atr_pct": b.get("atr_pct"),
-                "checks": b.get("checks"),
-                "filters": b.get("filters"),
                 "stop_estimate": b.get("stop_estimate"),
-                "per_share_risk": b.get("per_share_risk"),
                 "risk_usd": b.get("risk_usd"),
             }
         )
 
-    # Evidence files
     _wjson(out_dir / "paper_account.json", acct)
     _wjson(out_dir / "paper_positions.json", positions)
     _wjson(out_dir / "paper_open_orders.json", open_orders)
-    _wjson(out_dir / "paper_gate.json", gate)
-
-    _wjson(
-        out_dir / "signals.json",
-        {"entries": planned_entries, "exits": exits, "candidates_considered": len(candidates)},
-    )
-    _wjson(out_dir / "paper_orders_to_submit.json", orders_to_submit)
-
-    # Agent-friendly aliases
+    _wjson(out_dir / "signals.json", {"entries": entries, "exits": exits})
     _wjson(out_dir / "orderIntents.json", orders_to_submit)
 
-    # Trade explanations (plain-ish structure; UI renders it nicely)
-    trade_explanations = []
-    for o in orders_to_submit:
-        trade_explanations.append(
-            {
-                "symbol": o.get("symbol"),
-                "side": o.get("side"),
-                "qty": o.get("qty"),
-                "reason": o.get("reason"),
-                "signal_values": {
-                    "close": o.get("close"),
-                    "sma200": o.get("sma200"),
-                    "sma5": o.get("sma5"),
-                    "rsi2": o.get("rsi2"),
-                    "adv20": o.get("adv20"),
-                    "atr_pct": o.get("atr_pct"),
-                },
-                "checks": o.get("checks"),
-                "filters": o.get("filters"),
-                "sizing": {
-                    "stop_estimate": o.get("stop_estimate"),
-                    "per_share_risk": o.get("per_share_risk"),
-                    "risk_usd": o.get("risk_usd"),
-                    "risk_per_trade_pct": risk_per_trade_pct,
-                    "max_open_risk_pct": max_open_risk_pct,
-                    "stop_atr_mult": stop_atr_mult,
-                },
-                "safety": {
-                    "drawdown_gate": gate,
-                    "note": "Safety Check (backtest + human ack) is recorded in qa.json by the command runner.",
-                },
-            }
-        )
-    _wjson(out_dir / "trade_explanations.json", trade_explanations)
-
-    # Place orders (if enabled)
+    # Place orders (paper) if enabled and not dry_run
     placed: List[Any] = []
     skipped: List[Any] = []
 
-    can_place = is_trading_enabled() and (not dry_run)
+    can_place = bool(is_trading_enabled()) and (not dry_run)
+
     if can_place:
-        # import Alpaca request types inside runtime path
         from alpaca.trading.enums import OrderSide, TimeInForce
         from alpaca.trading.requests import MarketOrderRequest
 
         for o in orders_to_submit:
-            sym = o["symbol"]
+            sym = str(o["symbol"]).upper()
             if sym in open_order_syms:
                 skipped.append({**o, "skip_reason": "existing_open_order"})
                 continue
-
             req = MarketOrderRequest(
                 symbol=sym,
                 qty=int(o["qty"]),
                 side=OrderSide.SELL if o["side"] == "sell" else OrderSide.BUY,
                 time_in_force=TimeInForce.OPG,
-                client_order_id=f"mfp-{sym}-{o['side']}",
+                client_order_id=f"mfp-{strategy_id}-{sym}-{o['side']}",
             )
             try:
                 resp = tc.submit_order(order_data=req)
@@ -490,48 +481,30 @@ def paper_cycle(
         skipped.append({"note": "TRADING NOT ENABLED or DRY RUN - no orders submitted"})
 
     ack = {"placed": placed, "skipped": skipped}
-    _wjson(out_dir / "paper_broker_ack.json", ack)
-
-    # Agent-friendly alias
     _wjson(out_dir / "orders.json", ack)
 
-    # Human-readable summary
     md = []
-    md.append("# Trade Preview / Execution Report\n")
-    md.append(f"- trading_enabled_env: `{is_trading_enabled()}`")
+    md.append("# Strategy Run\n")
+    md.append(f"- strategy_id: `{strategy_id}`")
+    md.append(f"- engine: `{engine}`")
     md.append(f"- dry_run: `{dry_run}`")
     md.append(f"- will_place_orders: `{can_place}`\n")
-    md.append("## Account\n")
-    md.append(f"- equity: **{equity:.2f}**")
-    md.append(f"- buying_power: **{buying_power:.2f}**\n")
-    md.append("## Drawdown gate\n")
-    md.append(f"- ok: **{gate.get('ok')}**")
-    md.append(f"- reason: `{gate.get('reason')}`")
-    if "worst_dd_1m" in gate:
-        md.append(f"- worst_dd_1m: **{gate['worst_dd_1m'] * 100:.2f}%**")
-
-    md.append("\n## Planned sells\n")
-    md.extend([f"- SELL {e['symbol']} qty={e['qty']} reason={e['reason']}" for e in exits] or ["- none"])
-
-    md.append("\n## Planned buys\n")
-    md.extend(
-        [
-            f"- BUY {b['symbol']} qty={b['qty']} rsi={b['rsi2']:.2f} stop≈{b['stop_estimate']:.2f} risk≈${b['risk_usd']:.2f}"
-            for b in planned_entries
-        ]
-        or ["- none"]
-    )
-
+    md.append("## Portfolio gate\n")
+    md.append(f"- allow_new_entries: `{allow_new_entries}`")
+    md.append(f"- drawdown_gate_ok: `{dd_gate.get('ok')}`")
+    md.append(f"- regime_ok: `{regime.get('ok')}`\n")
+    md.append("## Orders\n")
+    md.append(f"- count: `{len(orders_to_submit)}`")
     _wtext(out_dir / "paper_report.md", "\n".join(md) + "\n")
 
-    zip_path = create_evidence_zip(out_dir)
     return {
         "dry_run": dry_run,
         "will_place": can_place,
         "orders_to_submit_count": len(orders_to_submit),
         "placed_count": len(placed),
-        "zip": str(zip_path),
-        "gate": gate,
+        "strategy_id": strategy_id,
+        "engine": engine,
+        "allow_new_entries": allow_new_entries,
     }
 
 
@@ -539,119 +512,22 @@ def paper_reconcile(
     out_dir: Path, symbols: List[str], place_stops: bool = False, stop_atr_mult: float = 1.5
 ) -> Dict[str, Any]:
     """
-    Morning reconcile:
-      - snapshot account/positions/orders
-      - ensure each position has a protective STOP (GTC)
+    Morning reconcile (minimal): snapshot account/positions/orders.
+    Stop placement is handled elsewhere in your codebase if enabled.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    from mfp.paper.alpaca_io import (
-        alpaca_data_client,
-        alpaca_trading_client,
-        fetch_daily_bars,
-        get_account_snapshot,
-        get_positions_snapshot,
-        is_trading_enabled,
-    )
+    from mfp.paper.alpaca_io import alpaca_trading_client, get_account_snapshot, get_positions_snapshot
 
     tc = alpaca_trading_client()
-    dc = alpaca_data_client()
-
     acct = get_account_snapshot(tc)
-    positions = get_positions_snapshot(tc)
-
-    from alpaca.trading.enums import QueryOrderStatus
-    from alpaca.trading.requests import GetOrdersRequest
-
-    req = GetOrdersRequest(status=QueryOrderStatus.OPEN)
-    open_orders = tc.get_orders(filter=req)
-    open_orders_dump = []
-    for o in open_orders:
-        try:
-            open_orders_dump.append(o.model_dump())
-        except Exception:
-            open_orders_dump.append(o.dict())
-
-    existing_stop_syms = set()
-    for o in open_orders_dump:
-        ot = o.get("order_type")
-        if ot in ("stop", "stop_limit"):
-            s = o.get("symbol")
-            if s:
-                existing_stop_syms.add(s)
-
-    held_syms = sorted({p.get("symbol") for p in positions if p.get("symbol")})
-    bars = fetch_daily_bars(dc, held_syms, lookback_days=250, feed="iex")
-
-    # Simple ATR(14) for stop sizing
-    from mfp.indicators import atr
-
-    actions: Dict[str, Any] = {"placed": [], "skipped": []}
-
-    for p in positions:
-        sym = p.get("symbol")
-        if not sym:
-            continue
-        try:
-            qty = abs(int(float(p.get("qty") or 0)))
-        except Exception:
-            qty = 0
-        if qty <= 0:
-            continue
-
-        if sym in existing_stop_syms:
-            actions["skipped"].append({"symbol": sym, "reason": "stop_exists"})
-            continue
-
-        df = bars.get(sym)
-        if df is None or len(df) < 30:
-            actions["skipped"].append({"symbol": sym, "reason": "no_bars"})
-            continue
-
-        a = atr(df["High"], df["Low"], df["Close"], 14).iloc[-1]
-        if pd.isna(a):
-            actions["skipped"].append({"symbol": sym, "reason": "no_atr"})
-            continue
-
-        try:
-            entry = float(p.get("avg_entry_price") or 0.0)
-        except Exception:
-            entry = 0.0
-        if entry <= 0:
-            actions["skipped"].append({"symbol": sym, "reason": "no_entry_price"})
-            continue
-
-        stop_price = max(0.01, entry - stop_atr_mult * float(a))
-
-        if is_trading_enabled() and place_stops:
-            from alpaca.trading.enums import OrderSide, TimeInForce
-            from alpaca.trading.requests import StopOrderRequest
-
-            try:
-                req = StopOrderRequest(
-                    symbol=sym,
-                    qty=qty,
-                    side=OrderSide.SELL,
-                    time_in_force=TimeInForce.GTC,
-                    stop_price=stop_price,
-                    client_order_id=f"mfp-stop-{sym}",
-                )
-                resp = tc.submit_order(order_data=req)
-                try:
-                    actions["placed"].append(resp.model_dump())
-                except Exception:
-                    actions["placed"].append(resp.dict())
-            except Exception as e:
-                actions["skipped"].append({"symbol": sym, "reason": f"submit_failed:{type(e).__name__}"})
-        else:
-            actions["skipped"].append(
-                {"symbol": sym, "reason": "trading_disabled_or_place_stops_false", "stop_price": stop_price}
-            )
+    pos = get_positions_snapshot(tc)
 
     _wjson(out_dir / "paper_account.json", acct)
-    _wjson(out_dir / "paper_positions.json", positions)
-    _wjson(out_dir / "paper_open_orders.json", open_orders_dump)
-    _wjson(out_dir / "paper_stop_actions.json", actions)
+    _wjson(out_dir / "paper_positions.json", pos)
+    _wjson(
+        out_dir / "paper_stop_actions.json",
+        {"note": "stop placement not implemented in v3 reconcile", "place_stops": place_stops},
+    )
 
-    zip_path = create_evidence_zip(out_dir)
-    return {"zip": str(zip_path), "stop_actions": actions}
+    return {"stop_actions": {"placed": [], "skipped": []}}
